@@ -1,0 +1,8 @@
+# 复制本文件为 signing.properties 后填入真实密钥信息。
+# signing.properties 与 *.jks / *.keystore 均已在 .gitignore 中忽略，切勿提交到仓库。
+#
+# 也支持通过同名环境变量传入（例如用于 CI 环境），优先级高于 signing.properties。
+KEYSTORE_FILE=signing/huiguang-release.jks
+KEYSTORE_PASSWORD=请替换为密钥库密码
+KEYSTORE_ALIAS=huiguang
+KEYSTORE_ALIAS_PASSWORD=请替换为私钥密码
