@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.overscroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -57,7 +58,10 @@ import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.FloatingTabHeader
 import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.SearchPill
-import moe.huiguang.pixiv.design.components.WorkRow
+import moe.huiguang.pixiv.design.components.SwipeDeleteRow
+import moe.huiguang.pixiv.design.components.SwipeRevealController
+import moe.huiguang.pixiv.design.components.WorkRowBody
+import moe.huiguang.pixiv.design.components.dismissSwipeOnOutsideTap
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.ui.common.workMeta
 import moe.huiguang.pixiv.ui.history.matchesHistoryFilter
@@ -70,6 +74,7 @@ import moe.huiguang.pixiv.ui.history.matchesHistoryFilter
 fun SearchTab(
     padding: PaddingValues,
     settings: SettingsStore,
+    scrollToTopTick: Int = 0,
     onSubmit: (String, SearchMode) -> Unit,
     onOpenHistory: (HistoryEntry) -> Unit,
 ) {
@@ -88,8 +93,17 @@ fun SearchTab(
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    val swipeController = remember { SwipeRevealController() }
     val scrollState = rememberLazyListState()
     val overscroll = com.itos.coui.scroll.rememberCouiOverscrollEffect()
+
+    LaunchedEffect(filter) { swipeController.close() }
+    LaunchedEffect(scrollState.isScrollInProgress) {
+        if (scrollState.isScrollInProgress) swipeController.close()
+    }
+    LaunchedEffect(scrollToTopTick) {
+        if (scrollToTopTick > 0) scrollState.animateScrollToItem(0)
+    }
 
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -113,7 +127,8 @@ fun SearchTab(
     Box(
         Modifier
             .fillMaxSize()
-            .consumeWindowInsets(padding),
+            .consumeWindowInsets(padding)
+            .dismissSwipeOnOutsideTap(swipeController),
     ) {
         Box(
             Modifier
@@ -219,13 +234,22 @@ fun SearchTab(
                     key = { "${it.kind}-${it.pid}" },
                     contentType = { "historyRow" },
                 ) { entry ->
-                    WorkRow(
-                        thumbUrl = entry.thumbUrl,
-                        title = entry.title,
-                        author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
-                        meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                    val rowKey = "${entry.kind}-${entry.pid}"
+                    SwipeDeleteRow(
+                        rowKey = rowKey,
+                        controller = swipeController,
+                        backdrop = effectBackdrop,
                         onClick = { onOpenHistory(entry) },
-                    )
+                        onDelete = { settings.removeHistory(entry.pid, entry.kind) },
+                    ) {
+                        WorkRowBody(
+                            thumbUrl = entry.thumbUrl,
+                            title = entry.title,
+                            author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
+                            meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        )
+                    }
                 }
             }
         }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -15,7 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -35,34 +39,59 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Group
+import com.itos.coui.menu.CouiMenuItem
+import com.itos.coui.menu.Menu
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.segmentbutton.SegmentedControl
+import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme
+import java.text.NumberFormat
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.data.model.SearchMode
+import moe.huiguang.pixiv.data.model.SearchRatingFilter
+import moe.huiguang.pixiv.data.model.SearchSortOrder
+import moe.huiguang.pixiv.data.model.TagMetadata
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.ArtworkCard
+import moe.huiguang.pixiv.design.components.CircleIconButton
+import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.UserCard
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
+
+private val TagCardOuterRadius = 24.dp
+private val TagCardPadding = 12.dp
+private val TagCoverInnerRadius = 12.dp // Concentric: 24.dp outer radius - 12.dp padding == 12.dp
+private val TagCardShape = CouiShape(TagCardOuterRadius, 3f)
+private val TagCoverShape = CouiShape(TagCoverInnerRadius, 3f)
 
 /**
  * Search results: 全部 / 插画 / 漫画 / 小说 / 作者.
@@ -83,17 +112,23 @@ fun SearchResultsScreen(
     onLogin: () -> Unit,
 ) {
     val resources = LocalResources.current
+    val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
     val settingsState by settings.state.collectAsState()
     val overscroll = rememberCouiOverscrollEffect()
     val scope = rememberCoroutineScope()
-    val cacheKey = "${mode.name}|$query"
+    var sortOrder by rememberSaveable { mutableStateOf(SearchSortOrder.NEWEST) }
+    var ratingFilter by rememberSaveable { mutableStateOf(SearchRatingFilter.ALL) }
+    var optionsMenuOpen by remember { mutableStateOf(false) }
+    val cacheKey = "${mode.name}|${sortOrder.name}|${ratingFilter.name}|$query"
     val cached = remember(cacheKey) { cache.get(cacheKey) }
 
     var items by remember(cacheKey) { mutableStateOf(cached?.items ?: emptyList()) }
+    var tagMetadata by remember(cacheKey) { mutableStateOf(cached?.tagMetadata) }
     var nextPage by remember(cacheKey) { mutableIntStateOf(cached?.nextPage ?: 1) }
     var endReached by remember(cacheKey) { mutableStateOf(cached?.endReached ?: false) }
-    var loading by remember(cacheKey) { mutableStateOf(false) }
+    var loading by remember(cacheKey) { mutableStateOf(cached == null) }
+    var inFlight by remember(cacheKey) { mutableStateOf(false) }
     var error by remember(cacheKey) { mutableStateOf<String?>(null) }
 
     var users by remember(cacheKey) { mutableStateOf<List<UserSearchItem>>(emptyList()) }
@@ -108,23 +143,37 @@ fun SearchResultsScreen(
     val userListState = rememberLazyListState()
 
     suspend fun loadNextPage() {
-        if (loading || endReached) return
+        if (inFlight || endReached) return
+        inFlight = true
         loading = true
         error = null
-        runCatching { api.search(query, mode, page = nextPage, limit = 30) }
-            .onSuccess { page ->
+        runCatching {
+            api.searchPage(
+                word = query,
+                mode = mode,
+                page = nextPage,
+                limit = 30,
+                order = sortOrder,
+                rating = ratingFilter,
+            )
+        }
+            .onSuccess { pageResult ->
                 val known = items.map { it.category to it.id }.toSet()
-                val fresh = page.filter { (it.category to it.id) !in known }
+                val fresh = pageResult.items.filter { (it.category to it.id) !in known }
                 items = items + fresh
+                if (tagMetadata == null && pageResult.tagMetadata != null) {
+                    tagMetadata = pageResult.tagMetadata
+                }
                 endReached = fresh.isEmpty()
                 nextPage += 1
                 cache.put(
                     cacheKey,
-                    SearchResultsCache.Entry(items, nextPage, endReached),
+                    SearchResultsCache.Entry(items, nextPage, endReached, tagMetadata),
                 )
             }
             .onFailure { error = it.message ?: resources.getString(R.string.error_search_failed) }
         loading = false
+        inFlight = false
     }
 
     suspend fun loadNextUsers() {
@@ -150,6 +199,14 @@ fun SearchResultsScreen(
 
     LaunchedEffect(cacheKey) {
         if (cached == null) loadNextPage()
+        gridStates.forEach { state ->
+            if (state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0) {
+                scope.launch { state.scrollToItem(0) }
+            }
+        }
+        if (userListState.firstVisibleItemIndex > 0 || userListState.firstVisibleItemScrollOffset > 0) {
+            scope.launch { userListState.scrollToItem(0) }
+        }
     }
 
     LaunchedEffect(filter, settingsState.session?.userId) {
@@ -163,9 +220,10 @@ fun SearchResultsScreen(
     }
 
     val backdrop = rememberCouiBackdrop()
+    val surfaceBackdrop = rememberCouiBackdrop()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val listTopPadding = statusTop + 56.dp + 54.dp
+    val listTopPadding = statusTop + 56.dp + 8.dp
 
     Box(
         Modifier
@@ -178,6 +236,13 @@ fun SearchResultsScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
+            // Flat opaque sibling source for GlowChip inside TagHeaderCard (avoids render-graph cycle).
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .couiBackdrop(surfaceBackdrop)
+                    .background(colors.background),
+            )
             SlideSwitcher(
                 index = filter,
                 modifier = Modifier.fillMaxSize(),
@@ -241,97 +306,193 @@ fun SearchResultsScreen(
                                 )
                             }
 
-                            else -> LazyVerticalStaggeredGrid(
-                            columns = StaggeredGridCells.Fixed(2),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .overscroll(overscroll),
-                            state = gridStates[selected],
-                            contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = listTopPadding,
-                                bottom = navBottom + 24.dp,
-                            ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalItemSpacing = 12.dp,
-                        ) {
-                            if (visible.isEmpty() && !loading) {
-                                item(span = StaggeredGridItemSpan.FullLine, key = "empty") {
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(32.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.search_no_result),
-                                            kind = CouiTextKind.ItemSummary,
-                                            color = colors.summary,
+                            else -> {
+                                val gridState = gridStates[selected]
+                                val tagCoverUrl = remember(tagMetadata, visible, items, settingsState.revealR18) {
+                                    tagMetadata?.officialCoverUrl?.takeIf { it.isNotBlank() }
+                                        ?: (visible.firstOrNull { (!settingsState.revealR18 || !it.isAdult) && it.thumbUrl.isNotBlank() }
+                                            ?: items.firstOrNull { (!settingsState.revealR18 || !it.isAdult) && it.thumbUrl.isNotBlank() }
+                                            ?: visible.firstOrNull { it.thumbUrl.isNotBlank() }
+                                            ?: items.firstOrNull { it.thumbUrl.isNotBlank() })
+                                            ?.thumbUrl
+                                        ?: ""
+                                }
+                                LaunchedEffect(gridState, items.size, endReached, loading) {
+                                    if (items.isEmpty() || endReached || loading) return@LaunchedEffect
+                                    snapshotFlow {
+                                        val info = gridState.layoutInfo
+                                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                                        info.totalItemsCount > 0 && lastVisible >= info.totalItemsCount - 6
+                                    }
+                                        .distinctUntilChanged()
+                                        .collect { nearEnd ->
+                                            if (nearEnd) loadNextPage()
+                                        }
+                                }
+                                LazyVerticalStaggeredGrid(
+                                    columns = StaggeredGridCells.Fixed(2),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .overscroll(overscroll),
+                                    state = gridState,
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        top = listTopPadding,
+                                        bottom = navBottom + 24.dp,
+                                    ),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalItemSpacing = 12.dp,
+                                ) {
+                                    if (mode == SearchMode.TAG) {
+                                        item(span = StaggeredGridItemSpan.FullLine, key = "tag-header") {
+                                            TagHeaderCard(
+                                                tag = query,
+                                                coverUrl = tagCoverUrl,
+                                                metadata = tagMetadata,
+                                                favorited = query in settingsState.favoriteTags,
+                                                backdrop = surfaceBackdrop,
+                                                dark = dark,
+                                                onToggleFavorite = { settings.toggleFavoriteTag(query) },
+                                            )
+                                        }
+                                    }
+
+                                    if (visible.isEmpty() && !loading) {
+                                        item(span = StaggeredGridItemSpan.FullLine, key = "empty") {
+                                            Column(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(32.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.search_no_result),
+                                                    kind = CouiTextKind.ItemSummary,
+                                                    color = colors.summary,
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    items(visible, key = { "${it.category}-${it.id}" }) { item ->
+                                        ArtworkCard(
+                                            item = item,
+                                            revealR18 = settingsState.revealR18,
+                                            onClick = { onOpenWork(item) },
                                         )
+                                    }
+
+                                    item(span = StaggeredGridItemSpan.FullLine, key = "footer") {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = when {
+                                                    error != null -> error!!
+                                                    loading -> stringResource(R.string.search_loading)
+                                                    endReached -> stringResource(R.string.search_end)
+                                                    else -> ""
+                                                },
+                                                kind = CouiTextKind.ItemSummary,
+                                                color = colors.summary,
+                                            )
+                                        }
                                     }
                                 }
                             }
-
-                            items(visible, key = { "${it.category}-${it.id}" }) { item ->
-                                ArtworkCard(
-                                    item = item,
-                                    revealR18 = settingsState.revealR18,
-                                    onClick = { onOpenWork(item) },
-                                )
-                            }
-
-                            item(span = StaggeredGridItemSpan.FullLine, key = "footer") {
-                                LaunchedEffect(items.size, endReached, selected) {
-                                    if (!endReached) scope.launch { loadNextPage() }
-                                }
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = when {
-                                            error != null -> error!!
-                                            loading -> stringResource(R.string.search_loading)
-                                            endReached -> stringResource(R.string.search_end)
-                                            else -> ""
-                                        },
-                                        kind = CouiTextKind.ItemSummary,
-                                        color = colors.summary,
-                                    )
-                                }
-                            }
-                        }
                         }
                     }
                 }
             }
         }
 
-        Column(Modifier.fillMaxWidth()) {
-            FloatingSecondaryTopBar(
-                title = query,
-                backdrop = backdrop,
-                onBack = onBack,
-            )
-            SegmentedControl(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                labels = listOf(
-                    stringResource(R.string.search_filter_all),
-                    stringResource(R.string.search_filter_illust),
-                    stringResource(R.string.search_filter_manga),
-                    stringResource(R.string.search_filter_novel),
-                    stringResource(R.string.search_filter_author),
-                ),
-                selectedIndex = filter,
-                onSelected = { filter = it },
-                backdrop = backdrop,
-            )
-        }
+        FloatingSecondaryTopBar(
+            title = query,
+            backdrop = backdrop,
+            onBack = onBack,
+            trailing = {
+                Box {
+                    CircleIconButton(
+                        icon = CouiIcons.Filled.More,
+                        contentDescription = stringResource(R.string.search_options_menu),
+                        onClick = { optionsMenuOpen = true },
+                        backdrop = backdrop,
+                        dark = dark,
+                        blurRadius = 20f,
+                    )
+                    val menuItems = buildList {
+                        add(CouiMenuItem(0, stringResource(R.string.search_filter_all), selected = filter == 0))
+                        add(CouiMenuItem(1, stringResource(R.string.search_filter_illust), selected = filter == 1))
+                        add(CouiMenuItem(2, stringResource(R.string.search_filter_manga), selected = filter == 2))
+                        add(CouiMenuItem(3, stringResource(R.string.search_filter_novel), selected = filter == 3))
+                        add(CouiMenuItem(4, stringResource(R.string.search_filter_author), selected = filter == 4))
+                        add(
+                            CouiMenuItem(
+                                value = 10,
+                                text = stringResource(R.string.search_sort_newest),
+                                selected = sortOrder == SearchSortOrder.NEWEST,
+                                dividerBefore = true,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = 11,
+                                text = stringResource(R.string.search_sort_oldest),
+                                selected = sortOrder == SearchSortOrder.OLDEST,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = 20,
+                                text = stringResource(R.string.search_rating_all),
+                                selected = ratingFilter == SearchRatingFilter.ALL,
+                                dividerBefore = true,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = 21,
+                                text = stringResource(R.string.search_rating_safe),
+                                selected = ratingFilter == SearchRatingFilter.SAFE,
+                            ),
+                        )
+                        if (settingsState.revealR18) {
+                            add(
+                                CouiMenuItem(
+                                    value = 22,
+                                    text = stringResource(R.string.search_rating_r18),
+                                    selected = ratingFilter == SearchRatingFilter.R18,
+                                ),
+                            )
+                        }
+                    }
+                    Menu(
+                        expanded = optionsMenuOpen,
+                        onDismissRequest = { optionsMenuOpen = false },
+                        headerText = stringResource(R.string.search_menu_category_header),
+                        headerTextAlign = TextAlign.Start,
+                        modifier = Modifier.widthIn(min = 172.dp),
+                        offset = DpOffset(0.dp, 8.dp),
+                        items = menuItems,
+                        onItemClick = { item ->
+                            optionsMenuOpen = false
+                            when (item.value) {
+                                in 0..4 -> filter = item.value
+                                10 -> sortOrder = SearchSortOrder.NEWEST
+                                11 -> sortOrder = SearchSortOrder.OLDEST
+                                20 -> ratingFilter = SearchRatingFilter.ALL
+                                21 -> ratingFilter = SearchRatingFilter.SAFE
+                                22 -> ratingFilter = SearchRatingFilter.R18
+                            }
+                        },
+                    )
+                }
+            },
+        )
     }
 }
 
@@ -433,6 +594,94 @@ private fun AuthorResultsList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TagHeaderCard(
+    tag: String,
+    coverUrl: String,
+    metadata: TagMetadata?,
+    favorited: Boolean,
+    backdrop: CouiBackdrop,
+    dark: Boolean,
+    onToggleFavorite: () -> Unit,
+) {
+    val colors = CouiPageDefaults.themeColors()
+    val englishName = metadata?.englishName?.trim()?.takeIf { it.isNotEmpty() }
+    val countText = if (metadata != null) {
+        stringResource(
+            R.string.tag_header_works_count,
+            NumberFormat.getIntegerInstance().format(metadata.totalWorks),
+        )
+    } else {
+        stringResource(R.string.tag_header_works_loading)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(TagCardShape)
+            .background(colors.card)
+            .padding(TagCardPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (coverUrl.isBlank()) {
+            Box(
+                Modifier
+                    .size(108.dp)
+                    .clip(TagCoverShape)
+                    .background(colors.background),
+            )
+        } else {
+            RetryableImage(
+                url = coverUrl,
+                contentDescription = tag,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(108.dp)
+                    .clip(TagCoverShape)
+                    .background(colors.background),
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tag,
+                kind = CouiTextKind.ItemTitle,
+                color = colors.title,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (englishName != null) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = englishName,
+                    kind = CouiTextKind.ItemSummary,
+                    color = colors.summary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = countText,
+                kind = CouiTextKind.ItemSummary,
+                color = colors.summary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(10.dp))
+            GlowChip(
+                text = stringResource(if (favorited) R.string.tag_favorite_added else R.string.tag_favorite_add),
+                selected = favorited,
+                whiteGlass = !favorited,
+                onClick = onToggleFavorite,
+                backdrop = backdrop,
+                dark = dark,
+                modifier = Modifier.align(Alignment.End),
+            )
         }
     }
 }

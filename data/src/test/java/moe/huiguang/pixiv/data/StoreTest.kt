@@ -81,6 +81,34 @@ class StoreTest {
     }
 
     @Test
+    fun `removeHistory removes only matching pid and kind and persists`() {
+        val kv = InMemoryKeyValueStore()
+        val store = SettingsStore(kv)
+        store.addHistory(history("100", HistoryEntry.KIND_ILLUST))
+        store.addHistory(history("100", HistoryEntry.KIND_NOVEL))
+        store.addHistory(history("200", HistoryEntry.KIND_ILLUST))
+
+        store.removeHistory("100", HistoryEntry.KIND_ILLUST)
+
+        val remaining = SettingsStore(kv).current.history
+        assertEquals(2, remaining.size)
+        assertFalse(remaining.any { it.pid == "100" && it.kind == HistoryEntry.KIND_ILLUST })
+        assertTrue(remaining.any { it.pid == "100" && it.kind == HistoryEntry.KIND_NOVEL })
+        assertTrue(remaining.any { it.pid == "200" && it.kind == HistoryEntry.KIND_ILLUST })
+    }
+
+    @Test
+    fun `contour glow persists across store reloads`() {
+        val kv = InMemoryKeyValueStore()
+        val store = SettingsStore(kv)
+        assertTrue(store.current.contourGlow)
+
+        store.setContourGlow(false)
+
+        assertFalse(SettingsStore(kv).current.contourGlow)
+    }
+
+    @Test
     fun `reader style survives a new instance`() {
         val kv = InMemoryKeyValueStore()
         SettingsStore(kv).apply {
@@ -126,6 +154,20 @@ class StoreTest {
         store.setWelcomeAccepted(true)
         assertTrue(store.current.welcomeAccepted)
         assertTrue(SettingsStore(kv).current.welcomeAccepted)
+    }
+
+    @Test
+    fun `favorite tags toggle and persist across store reloads`() {
+        val kv = InMemoryKeyValueStore()
+        val store = SettingsStore(kv)
+        assertTrue(store.current.favoriteTags.isEmpty())
+
+        assertTrue(store.toggleFavoriteTag("風景"))
+        assertTrue(store.toggleFavoriteTag("少女"))
+        assertEquals(listOf("少女", "風景"), SettingsStore(kv).current.favoriteTags)
+
+        assertFalse(store.toggleFavoriteTag("風景"))
+        assertEquals(listOf("少女"), SettingsStore(kv).current.favoriteTags)
     }
 
     @Test

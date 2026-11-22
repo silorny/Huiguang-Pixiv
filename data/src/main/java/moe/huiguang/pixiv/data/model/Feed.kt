@@ -13,6 +13,8 @@ data class HomeFeed(
     val recommended: List<SearchItem> = emptyList(),
     val ranking: List<SearchItem> = emptyList(),
     val following: List<SearchItem> = emptyList(),
+    val novelRecommended: List<SearchItem> = emptyList(),
+    val novelFollowing: List<SearchItem> = emptyList(),
     val pixivision: List<PixivisionSummary> = emptyList(),
     val tags: List<String> = emptyList(),
     /** `true` when this is the logged-out fallback built from curated tags. */
@@ -21,5 +23,10 @@ data class HomeFeed(
     val novelFollowingFallback: Boolean = false,
 ) {
     val isEmpty: Boolean
-        get() = recommended.isEmpty() && ranking.isEmpty() && following.isEmpty() && pixivision.isEmpty()
+        get() = recommended.isEmpty() &&
+            ranking.isEmpty() &&
+            following.isEmpty() &&
+            novelRecommended.isEmpty() &&
+            novelFollowing.isEmpty() &&
+            pixivision.isEmpty()
 }

@@ -1,5 +1,6 @@
 package moe.huiguang.pixiv.design.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -8,10 +9,13 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.icons.CouiIcons
 import com.itos.coui.input.CouiHapticFeedback
 import com.itos.coui.input.performCouiHapticFeedback
 import com.itos.coui.layout.CouiPageDefaults
@@ -123,5 +127,20 @@ fun SettingSelectRow(
                 enabled = enabled,
             )
         },
+    )
+}
+
+/** Standard COUI trailing disclosure chevron for clickable setting/navigation rows. */
+@Composable
+fun NextChevron(modifier: Modifier = Modifier) {
+    val dark = CouiTheme.isDark
+    val tint = Color(if (dark) 0x4DFFFFFF else 0x42000000)
+    Image(
+        imageVector = CouiIcons.Filled.Next,
+        contentDescription = null,
+        colorFilter = ColorFilter.tint(tint),
+        modifier = modifier
+            .padding(start = 4.dp)
+            .size(width = 12.dp, height = 24.dp),
     )
 }

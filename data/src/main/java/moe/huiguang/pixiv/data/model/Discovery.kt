@@ -136,6 +136,44 @@ internal fun parseSeriesNav(b: JSONObject): SeriesNav? {
     )
 }
 
+/** Dimension selector for `/ranking.php`. */
+enum class RankingMode(val apiMode: String) {
+    DAILY("daily"),
+    WEEKLY("weekly"),
+    MONTHLY("monthly"),
+    ROOKIE("rookie"),
+}
+
+/** Sort order supported by Pixiv artwork/novel search for all accounts. */
+enum class SearchSortOrder(val apiOrder: String) {
+    NEWEST("date_d"),
+    OLDEST("date"),
+}
+
+/** Age rating filter supported by Pixiv search. */
+enum class SearchRatingFilter(val apiMode: String) {
+    ALL("all"),
+    SAFE("safe"),
+    R18("r18"),
+}
+
+/** Aggregated metadata for a tag search query, extracted alongside page 1 results. */
+data class TagMetadata(
+    val tag: String,
+    val englishName: String? = null,
+    val illustTotal: Int = 0,
+    val novelTotal: Int = 0,
+    val officialCoverUrl: String? = null,
+) {
+    val totalWorks: Int get() = illustTotal + novelTotal
+}
+
+/** Search page result paired with optional tag metadata (populated on page 1). */
+data class SearchPageResult(
+    val items: List<SearchItem>,
+    val tagMetadata: TagMetadata? = null,
+)
+
 /**
  * Undoes Pixiv's thumbnail crop.
  *

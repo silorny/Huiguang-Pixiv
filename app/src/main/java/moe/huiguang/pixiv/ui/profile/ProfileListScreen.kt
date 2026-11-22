@@ -82,6 +82,10 @@ fun ProfileListScreen(
 
     var users by remember(uid, kind) { mutableStateOf<List<UserSearchItem>>(emptyList()) }
     var works by remember(uid, kind) { mutableStateOf<List<ProfileWorkRowItem>>(emptyList()) }
+    var artOffset by remember(uid, kind) { mutableIntStateOf(0) }
+    var novelOffset by remember(uid, kind) { mutableIntStateOf(0) }
+    var artEnded by remember(uid, kind) { mutableStateOf(false) }
+    var novelEnded by remember(uid, kind) { mutableStateOf(false) }
     var loading by remember(uid, kind) { mutableStateOf(true) }
     var loadingMore by remember(uid, kind) { mutableStateOf(false) }
     var endReached by remember(uid, kind) { mutableStateOf(false) }
@@ -92,13 +96,23 @@ fun ProfileListScreen(
         loading = true
         error = null
         endReached = false
+        artOffset = 0
+        novelOffset = 0
+        artEnded = false
+        novelEnded = false
         runCatching {
             when (kind) {
                 "mypixiv" -> api.userMyPixiv(uid, offset = 0, limit = PAGE_SIZE) to emptyList<ProfileWorkRowItem>()
                 "works" -> coroutineScope {
-                    val art = async { runCatching { api.userWorksPage(uid, offset = 0, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
-                    val novel = async { runCatching { api.userNovelWorksPage(uid, offset = 0, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
-                    val mapped = art.await().map {
+                    val artDeferred = async { runCatching { api.userWorksPage(uid, offset = 0, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
+                    val novelDeferred = async { runCatching { api.userNovelWorksPage(uid, offset = 0, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
+                    val art = artDeferred.await()
+                    val novel = novelDeferred.await()
+                    artOffset = art.size
+                    novelOffset = novel.size
+                    artEnded = art.size < PAGE_SIZE
+                    novelEnded = novel.size < PAGE_SIZE
+                    val mapped = art.map {
                         ProfileWorkRowItem(
                             id = it.id,
                             kind = HistoryEntry.KIND_ILLUST,
@@ -107,7 +121,7 @@ fun ProfileListScreen(
                             thumbUrl = it.thumbUrl,
                             author = it.userName,
                         )
-                    } + novel.await().map {
+                    } + novel.map {
                         ProfileWorkRowItem(
                             id = it.id,
                             kind = HistoryEntry.KIND_NOVEL,
@@ -124,7 +138,7 @@ fun ProfileListScreen(
         }.onSuccess { (u, w) ->
             users = u
             works = w
-            endReached = if (kind == "works") w.size < PAGE_SIZE else u.size < PAGE_SIZE
+            endReached = if (kind == "works") (artEnded && novelEnded) else u.size < PAGE_SIZE
         }.onFailure { e ->
             error = e.message ?: resources.getString(R.string.error_load_failed)
         }
@@ -132,20 +146,69 @@ fun ProfileListScreen(
     }
 
     suspend fun loadMore() {
-        if (loading || loadingMore || endReached || kind == "works") return
+        if (loading || loadingMore || endReached) return
         loadingMore = true
-        runCatching {
-            val offset = users.size
-            if (kind == "mypixiv") {
-                api.userMyPixiv(uid, offset = offset, limit = PAGE_SIZE)
-            } else {
-                api.userFollowing(uid, offset = offset, limit = PAGE_SIZE)
+        if (kind == "works") {
+            runCatching {
+                coroutineScope {
+                    val artDeferred = if (!artEnded) {
+                        async { runCatching { api.userWorksPage(uid, offset = artOffset, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
+                    } else null
+                    val novelDeferred = if (!novelEnded) {
+                        async { runCatching { api.userNovelWorksPage(uid, offset = novelOffset, limit = PAGE_SIZE) }.getOrDefault(emptyList()) }
+                    } else null
+                    val art = artDeferred?.await().orEmpty()
+                    val novel = novelDeferred?.await().orEmpty()
+                    art to novel
+                }
+            }.onSuccess { (art, novel) ->
+                if (!artEnded) {
+                    artOffset += art.size
+                    if (art.size < PAGE_SIZE) artEnded = true
+                }
+                if (!novelEnded) {
+                    novelOffset += novel.size
+                    if (novel.size < PAGE_SIZE) novelEnded = true
+                }
+                val known = works.mapTo(HashSet()) { "${it.kind}-${it.id}" }
+                val fresh = (
+                    art.map {
+                        ProfileWorkRowItem(
+                            id = it.id,
+                            kind = HistoryEntry.KIND_ILLUST,
+                            illustType = it.illustType,
+                            title = it.title,
+                            thumbUrl = it.thumbUrl,
+                            author = it.userName,
+                        )
+                    } + novel.map {
+                        ProfileWorkRowItem(
+                            id = it.id,
+                            kind = HistoryEntry.KIND_NOVEL,
+                            illustType = -1,
+                            title = it.title,
+                            thumbUrl = it.thumbUrl,
+                            author = it.userName,
+                        )
+                    }
+                ).filter { "${it.kind}-${it.id}" !in known }
+                works = works + fresh
+                if ((artEnded && novelEnded) || fresh.isEmpty()) endReached = true
             }
-        }.onSuccess { more ->
-            val known = users.mapTo(HashSet()) { it.userId }
-            val fresh = more.filter { it.userId !in known }
-            users = users + fresh
-            if (more.size < PAGE_SIZE || fresh.isEmpty()) endReached = true
+        } else {
+            runCatching {
+                val offset = users.size
+                if (kind == "mypixiv") {
+                    api.userMyPixiv(uid, offset = offset, limit = PAGE_SIZE)
+                } else {
+                    api.userFollowing(uid, offset = offset, limit = PAGE_SIZE)
+                }
+            }.onSuccess { more ->
+                val known = users.mapTo(HashSet()) { it.userId }
+                val fresh = more.filter { it.userId !in known }
+                users = users + fresh
+                if (more.size < PAGE_SIZE || fresh.isEmpty()) endReached = true
+            }
         }
         loadingMore = false
     }
@@ -219,6 +282,27 @@ fun ProfileListScreen(
                                     onOpenWork(routeKind, item.id)
                                 },
                             )
+                        }
+                        item(key = "works-footer") {
+                            LaunchedEffect(works.size, endReached) {
+                                if (!endReached) loadMoreTrigger++
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = when {
+                                        loadingMore -> stringResource(R.string.search_loading)
+                                        endReached -> stringResource(R.string.search_end)
+                                        else -> ""
+                                    },
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = colors.summary,
+                                )
+                            }
                         }
                     }
                 }

@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.overscroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,7 +53,10 @@ import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.SlideSwitcher
-import moe.huiguang.pixiv.design.components.WorkRow
+import moe.huiguang.pixiv.design.components.SwipeDeleteRow
+import moe.huiguang.pixiv.design.components.SwipeRevealController
+import moe.huiguang.pixiv.design.components.WorkRowBody
+import moe.huiguang.pixiv.design.components.dismissSwipeOnOutsideTap
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import moe.huiguang.pixiv.ui.common.workMeta
 
@@ -65,20 +70,35 @@ fun HistoryScreen(
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
     val backdrop = rememberCouiBackdrop()
+    val effectBackdrop = rememberCouiBackdrop()
     val windowBackdrop = rememberCouiWindowBackdrop()
     val state by settings.state.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
+    val swipeController = remember { SwipeRevealController() }
+    val listState = rememberLazyListState()
     val overscroll = com.itos.coui.scroll.rememberCouiOverscrollEffect()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    LaunchedEffect(filter) { swipeController.close() }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) swipeController.close()
+    }
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(colors.background),
+            .background(colors.background)
+            .dismissSwipeOnOutsideTap(swipeController),
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .couiBackdrop(effectBackdrop)
+                .background(colors.background),
+        )
         Box(
             Modifier
                 .fillMaxSize()
@@ -93,7 +113,8 @@ fun HistoryScreen(
                     state.history.filter { matchesHistoryFilter(it, selected) }
                 }
                 LazyColumn(
-                    Modifier
+                    state = listState,
+                    modifier = Modifier
                         .fillMaxSize()
                         .overscroll(overscroll),
                     contentPadding = PaddingValues(
@@ -137,13 +158,22 @@ fun HistoryScreen(
                             key = { "${it.kind}-${it.pid}" },
                             contentType = { "historyRow" },
                         ) { entry ->
-                            WorkRow(
-                                thumbUrl = entry.thumbUrl,
-                                title = entry.title,
-                                author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
-                                meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                            val rowKey = "${entry.kind}-${entry.pid}"
+                            SwipeDeleteRow(
+                                rowKey = rowKey,
+                                controller = swipeController,
+                                backdrop = effectBackdrop,
                                 onClick = { onOpen(entry) },
-                            )
+                                onDelete = { settings.removeHistory(entry.pid, entry.kind) },
+                            ) {
+                                WorkRowBody(
+                                    thumbUrl = entry.thumbUrl,
+                                    title = entry.title,
+                                    author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
+                                    meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                )
+                            }
                         }
                         item(key = "bottom-spacer") { Spacer(Modifier.height(8.dp)) }
                     }

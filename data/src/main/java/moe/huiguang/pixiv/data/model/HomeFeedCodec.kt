@@ -22,6 +22,8 @@ object HomeFeedCodec {
         root.put("recommended", itemsToJson(feed.recommended))
         root.put("ranking", itemsToJson(feed.ranking))
         root.put("following", itemsToJson(feed.following))
+        if (feed.novelRecommended.isNotEmpty()) root.put("novelRecommended", itemsToJson(feed.novelRecommended))
+        if (feed.novelFollowing.isNotEmpty()) root.put("novelFollowing", itemsToJson(feed.novelFollowing))
         root.put("pixivision", pixivisionToJson(feed.pixivision))
         return root.toString()
     }
@@ -34,6 +36,8 @@ object HomeFeedCodec {
                 recommended = itemsFromJson(root.optJSONArray("recommended")),
                 ranking = itemsFromJson(root.optJSONArray("ranking")),
                 following = itemsFromJson(root.optJSONArray("following")),
+                novelRecommended = itemsFromJson(root.optJSONArray("novelRecommended")),
+                novelFollowing = itemsFromJson(root.optJSONArray("novelFollowing")),
                 pixivision = pixivisionFromJson(root.optJSONArray("pixivision")),
                 tags = root.optJSONArray("tags")?.let { array ->
                     buildList {

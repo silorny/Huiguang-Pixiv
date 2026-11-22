@@ -64,7 +64,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
@@ -94,6 +93,7 @@ import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.GlowStatCapsule
+import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.ui.common.IntroCard
@@ -527,9 +527,9 @@ private fun ProfileHeader(
     val uidShiftPx = with(density) { 22.dp.toPx() }
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (profile != null) {
-                AsyncImage(
-                    model = profile.avatarUrl,
+            if (profile != null && profile.avatarUrl.isNotBlank()) {
+                RetryableImage(
+                    url = profile.avatarUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

@@ -32,12 +32,17 @@ import moe.huiguang.pixiv.data.model.NovelImage
 import moe.huiguang.pixiv.data.model.NovelSeries
 import moe.huiguang.pixiv.data.model.PixivisionDetail
 import moe.huiguang.pixiv.data.model.PixivisionSummary
+import moe.huiguang.pixiv.data.model.RankingMode
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.data.model.SearchMode
+import moe.huiguang.pixiv.data.model.SearchPageResult
+import moe.huiguang.pixiv.data.model.SearchRatingFilter
+import moe.huiguang.pixiv.data.model.SearchSortOrder
 import moe.huiguang.pixiv.data.model.SeriesContent
 import moe.huiguang.pixiv.data.model.SeriesLink
 import moe.huiguang.pixiv.data.model.SeriesNav
+import moe.huiguang.pixiv.data.model.TagMetadata
 import moe.huiguang.pixiv.data.model.UserProfile
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.data.model.UserSearchResult
@@ -97,11 +102,24 @@ class PixivApi(
     private val allowLoopbackTestHost: Boolean =
         baseUrl.startsWith("http://127.0.0.1") || baseUrl.startsWith("http://localhost")
 
+    private fun isPixivCookieHost(host: String): Boolean =
+        host == "pixiv.net" || host.endsWith(".pixiv.net") ||
+            host == "pixiv.org" || host.endsWith(".pixiv.org")
+
+    private fun isAllowedPixivHost(request: Request): Boolean {
+        val host = request.url.host.lowercase()
+        if (isPixivCookieHost(host) ||
+            host == "pximg.net" || host.endsWith(".pximg.net") ||
+            host == "pixivision.net" || host.endsWith(".pixivision.net")
+        ) {
+            return request.isHttps
+        }
+        return allowLoopbackTestHost && baseHost != null && host == baseHost
+    }
+
     private fun isCookieAllowed(request: Request): Boolean {
         val host = request.url.host.lowercase()
-        val isOfficialPixiv = host == "pixiv.net" || host.endsWith(".pixiv.net") ||
-            host == "pixiv.org" || host.endsWith(".pixiv.org")
-        if (isOfficialPixiv) {
+        if (isPixivCookieHost(host)) {
             return request.isHttps
         }
         return allowLoopbackTestHost && baseHost != null && host == baseHost
@@ -112,9 +130,11 @@ class PixivApi(
         .addInterceptor { chain ->
             val original = chain.request()
             val builder = original.newBuilder()
-                .header("Accept-Language", "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7")
-            if (original.header("Referer") == null) {
-                builder.header("Referer", REFERER)
+            if (isAllowedPixivHost(original)) {
+                builder.header("Accept-Language", "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7")
+                if (original.header("Referer") == null) {
+                    builder.header("Referer", REFERER)
+                }
             }
             if (original.header("User-Agent") == null) {
                 builder.header("User-Agent", ua)
@@ -124,6 +144,10 @@ class PixivApi(
         .addNetworkInterceptor { chain ->
             val request = chain.request()
             val builder = request.newBuilder()
+            if (!isAllowedPixivHost(request)) {
+                builder.removeHeader("Referer")
+                builder.removeHeader("Accept-Language")
+            }
             // Enforce cookie scope on every network hop (including 30x redirects)
             // so session cookies never leak to non-Pixiv hosts or over cleartext.
             if (isCookieAllowed(request)) {
@@ -171,6 +195,7 @@ class PixivApi(
      */
     suspend fun homeFeed(): HomeFeed? {
         val illustPair: Pair<Int, String>
+        val novelPair: Pair<Int, String>?
         val features: List<PixivisionSummary>
         coroutineScope {
             val illust = async {
@@ -182,10 +207,14 @@ class PixivApi(
                     throw PixivException(e.message ?: "network")
                 }
             }
+            val novel = async {
+                runCatching { homeNovelRaw() }.getOrNull()
+            }
             val pixivision = async {
                 runCatching { pixivisionList() }.getOrDefault(emptyList())
             }
             illustPair = illust.await()
+            novelPair = novel.await()
             features = pixivision.await()
         }
 
@@ -193,7 +222,14 @@ class PixivApi(
         if (code == 400 || code == 401) return null
         if (code != 200) throw PixivException("HTTP $code")
         val illustFeed = parseHomePayload(body, novel = false) ?: return null
-        return illustFeed.copy(pixivision = features)
+        val novelFeed = novelPair?.takeIf { it.first == 200 }?.let { (_, raw) ->
+            runCatching { parseHomePayload(raw, novel = true) }.getOrNull()
+        }
+        return illustFeed.copy(
+            novelRecommended = novelFeed?.recommended.orEmpty(),
+            novelFollowing = novelFeed?.following.orEmpty(),
+            pixivision = features,
+        )
     }
 
     private fun parseHomePayload(body: String, novel: Boolean): HomeFeed? {
@@ -305,10 +341,11 @@ class PixivApi(
      */
     suspend fun fallbackFeed(): HomeFeed {
         val tags = listOf("オリジナル", "初音ミク", "風景", "女の子")
-        val (artDisc, features) = coroutineScope {
+        val (artDisc, novelDisc, features) = coroutineScope {
             val a = async { runCatching { illustDiscovery(limit = 24) }.getOrDefault(emptyList()) }
+            val n = async { runCatching { novelDiscovery(limit = 16) }.getOrDefault(emptyList()) }
             val p = async { runCatching { pixivisionList() }.getOrDefault(emptyList()) }
-            a.await() to p.await()
+            Triple(a.await(), n.await(), p.await())
         }
         val artworks = LinkedHashMap<String, SearchItem>()
         artDisc.forEach { artworks.putIfAbsent(it.id, it) }
@@ -321,27 +358,45 @@ class PixivApi(
             }
         }
         val rankingArt = runCatching { rankingPage(page = 1, category = null) }.getOrDefault(emptyList())
+        val extractedTags = extractTrendingTags(rankingArt, limit = 12)
         return HomeFeed(
             recommended = artworks.values.take(48),
             ranking = rankingArt,
+            novelRecommended = novelDisc,
             pixivision = features,
-            tags = tags,
+            tags = extractedTags.ifEmpty { tags },
             isFallback = true,
         )
     }
 
     /**
      * Loads the next page for the home waterfall (section: 0=recommend, 1=ranking,
-     * 2=following; home only shows illustrations & manga).
+     * 2=following; category: 0=all, 1=illust, 2=manga, 3=novel on section 0/2,
+     * or ranking tab index on section 1).
      */
     suspend fun homeSectionMore(
         section: Int,
         category: Int,
         page: Int,
+        rankingMode: RankingMode = RankingMode.DAILY,
     ): List<SearchItem> = when (section) {
-        1 -> rankingPage(page = page, category = null)
-        2 -> followLatestPage(novel = false, page = page)
-        else -> illustDiscovery(limit = 30)
+        1 -> when (category) {
+            1 -> rankingPage(page = page, category = null, mode = RankingMode.WEEKLY)
+            2 -> rankingPage(page = page, category = null, mode = RankingMode.MONTHLY)
+            3 -> rankingPage(page = page, category = null, mode = RankingMode.ROOKIE)
+            4 -> rankingPage(page = page, category = SearchCategory.ILLUST, mode = rankingMode)
+            5 -> rankingPage(page = page, category = SearchCategory.MANGA, mode = rankingMode)
+            else -> rankingPage(page = page, category = null, mode = rankingMode)
+        }
+        2 -> followLatestPage(novel = category == 3, page = page)
+        else -> if (category == 3) novelDiscovery(limit = 24) else illustDiscovery(limit = 30)
+    }
+
+    /** Fetches live popular search tags from public daily ranking items. */
+    suspend fun trendingTags(limit: Int = 12, includeAdult: Boolean = false): List<String> {
+        val ranked = runCatching { rankingPage(page = 1, category = null, mode = RankingMode.DAILY) }
+            .getOrDefault(emptyList())
+        return extractTrendingTags(ranked, limit = limit, includeAdult = includeAdult)
     }
 
     /** Fetches the latest Pixivision editorial features in the active app language. */
@@ -413,16 +468,29 @@ class PixivApi(
         }
     }
 
-    /** Paginated daily ranking via `/ranking.php?mode=daily&p=...&format=json`. */
-    suspend fun rankingPage(page: Int = 1, category: SearchCategory? = null): List<SearchItem> {
+    /** Paginated ranking via `/ranking.php?mode=...&p=...&format=json`. */
+    suspend fun rankingPage(
+        page: Int = 1,
+        category: SearchCategory? = null,
+        mode: RankingMode = RankingMode.DAILY,
+    ): List<SearchItem> {
         val content = when (category) {
             SearchCategory.ILLUST -> "&content=illust"
             SearchCategory.MANGA -> "&content=manga"
             else -> ""
         }
-        val (code, body) = getJson("$baseUrl/ranking.php?mode=daily$content&p=$page&format=json")
-        if (code != 200) return emptyList()
-        val root = JSONObject(body)
+        val (code, body) = getJson(
+            url = "$baseUrl/ranking.php?mode=${mode.apiMode}$content&p=$page&format=json",
+            userAgent = DESKTOP_UA,
+        )
+        if (code != 200) throw PixivException("HTTP $code")
+        val trimmed = body.trimStart()
+        if (!trimmed.startsWith("{")) throw PixivException("HTTP $code: ${trimmed.take(220)}")
+        val root = JSONObject(trimmed)
+        if (root.has("error") && !root.isNull("error")) {
+            val err = root.optString("error")
+            if (err.isNotEmpty() && err != "false") throw PixivException(err)
+        }
         val contents = root.optJSONArray("contents") ?: return emptyList()
         return buildList {
             for (i in 0 until contents.length()) {
@@ -1121,22 +1189,63 @@ class PixivApi(
         mode: SearchMode,
         page: Int = 1,
         limit: Int = 30,
-    ): List<SearchItem> {
-        if (word.isBlank()) return emptyList()
+        order: SearchSortOrder = SearchSortOrder.NEWEST,
+        rating: SearchRatingFilter = SearchRatingFilter.ALL,
+    ): List<SearchItem> = searchPage(
+        word = word,
+        mode = mode,
+        page = page,
+        limit = limit,
+        order = order,
+        rating = rating,
+    ).items
+
+    suspend fun searchPage(
+        word: String,
+        mode: SearchMode,
+        page: Int = 1,
+        limit: Int = 30,
+        order: SearchSortOrder = SearchSortOrder.NEWEST,
+        rating: SearchRatingFilter = SearchRatingFilter.ALL,
+    ): SearchPageResult {
+        if (word.isBlank()) return SearchPageResult(emptyList())
         val enc = URLEncoder.encode(word, "UTF-8")
         val sm = mode.sMode
+        val ord = order.apiOrder
+        val rMode = rating.apiMode
 
         val (artCode, artBody) = getJson(
-            "$baseUrl/ajax/search/artworks/$enc?word=$enc&mode=all&p=$page&s_mode=$sm&type=all&lang=ja",
+            "$baseUrl/ajax/search/artworks/$enc?word=$enc&order=$ord&mode=$rMode&p=$page&s_mode=$sm&type=all&lang=en",
         )
         val (novelCode, novelBody) = getJson(
-            "$baseUrl/ajax/search/novels/$enc?word=$enc&mode=all&p=$page&s_mode=$sm&lang=ja",
+            "$baseUrl/ajax/search/novels/$enc?word=$enc&order=$ord&mode=$rMode&p=$page&s_mode=$sm&lang=en",
         )
 
         val items = ArrayList<SearchItem>()
         if (artCode == 200) items += parseArtworkSearch(artBody, limit)
         if (novelCode == 200) items += parseNovelSearch(novelBody, limit)
-        return items
+        val tagMeta = if (mode == SearchMode.TAG) {
+            val illustTotal = if (artCode == 200) parseSearchTotal(artBody, "illustManga") else 0
+            val novelTotal = if (novelCode == 200) parseSearchTotal(novelBody, "novel") else 0
+            val english = (if (artCode == 200) parseTagEnglishTranslation(artBody, word) else null)
+                ?: (if (novelCode == 200) parseTagEnglishTranslation(novelBody, word) else null)
+            val officialCoverUrl = if (page == 1) {
+                val (tagCode, tagBody) = getJson("$baseUrl/ajax/search/tags/$enc")
+                if (tagCode == 200) parseTagOfficialCover(tagBody) else null
+            } else {
+                null
+            }
+            TagMetadata(
+                tag = word,
+                englishName = english,
+                illustTotal = illustTotal,
+                novelTotal = novelTotal,
+                officialCoverUrl = officialCoverUrl,
+            )
+        } else {
+            null
+        }
+        return SearchPageResult(items = items, tagMetadata = tagMeta)
     }
 
     /**
@@ -1525,6 +1634,45 @@ class PixivApi(
         }
     }
 
+    private fun parseSearchTotal(body: String, sectionKey: String): Int {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return 0
+        if (json.optBoolean("error")) return 0
+        return json.optJSONObject("body")
+            ?.optJSONObject(sectionKey)
+            ?.optInt("total", 0)
+            ?: 0
+    }
+
+    private fun parseTagEnglishTranslation(body: String, word: String): String? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (json.optBoolean("error")) return null
+        val translations = json.optJSONObject("body")?.optJSONObject("tagTranslation") ?: return null
+        val entry = translations.optJSONObject(word) ?: run {
+            var matched: JSONObject? = null
+            val keys = translations.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.equals(word, ignoreCase = true)) {
+                    matched = translations.optJSONObject(key)
+                    break
+                }
+            }
+            matched
+        } ?: return null
+        val en = entry.optString("en").trim()
+        return en.takeIf { it.isNotEmpty() && !it.equals(word, ignoreCase = true) }
+    }
+
+    private fun parseTagOfficialCover(body: String): String? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (json.optBoolean("error")) return null
+        return json.optJSONObject("body")
+            ?.optJSONObject("pixpedia")
+            ?.optString("image")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+    }
+
     private fun plainSnippet(raw: String): String {
         if (raw.isBlank()) return ""
         return raw
@@ -1551,8 +1699,11 @@ class PixivApi(
 
     // -------------------------------------------------------------- transport
 
-    private suspend fun getJson(url: String, cookie: String? = null): Pair<Int, String> =
-        get(url, "application/json", cookie)
+    private suspend fun getJson(
+        url: String,
+        cookie: String? = null,
+        userAgent: String? = null,
+    ): Pair<Int, String> = get(url, "application/json", cookie, userAgent)
 
     private suspend fun getText(url: String, cookie: String? = null): Pair<Int, String> =
         get(url, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", cookie)
@@ -1595,6 +1746,34 @@ class PixivApi(
         }
         return code to body
     }
+}
+
+private val USERS_MILESTONE_REGEX = Regex("\\d+users入り$", RegexOption.IGNORE_CASE)
+
+/** Aggregates popular topic tags from ranked items for search discovery. */
+fun extractTrendingTags(
+    items: List<SearchItem>,
+    limit: Int = 12,
+    includeAdult: Boolean = false,
+): List<String> {
+    if (items.isEmpty() || limit <= 0) return emptyList()
+    val counts = LinkedHashMap<String, Int>()
+    for (item in items) {
+        if (!includeAdult && item.isAdult) continue
+        for (rawTag in item.tags) {
+            val tag = rawTag.trim()
+            if (tag.isEmpty()) continue
+            if (!includeAdult && (tag.equals("R-18", ignoreCase = true) || tag.equals("R-18G", ignoreCase = true))) {
+                continue
+            }
+            if (USERS_MILESTONE_REGEX.containsMatchIn(tag)) continue
+            counts[tag] = (counts[tag] ?: 0) + 1
+        }
+    }
+    return counts.entries
+        .sortedByDescending { it.value }
+        .take(limit)
+        .map { it.key }
 }
 
 /** OkHttp `enqueue` bridged to coroutines so cancelled lookups abort the call. */

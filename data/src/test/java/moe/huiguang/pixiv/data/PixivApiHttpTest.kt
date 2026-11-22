@@ -3,8 +3,14 @@ package moe.huiguang.pixiv.data
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
+import moe.huiguang.pixiv.data.model.RankingMode
 import moe.huiguang.pixiv.data.model.SearchCategory
+import moe.huiguang.pixiv.data.model.SearchItem
+import moe.huiguang.pixiv.data.model.SearchMode
+import moe.huiguang.pixiv.data.model.SearchRatingFilter
+import moe.huiguang.pixiv.data.model.SearchSortOrder
 import moe.huiguang.pixiv.data.net.PixivApi
+import moe.huiguang.pixiv.data.net.extractTrendingTags
 import moe.huiguang.pixiv.data.net.normalizeCookieHeader
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,6 +39,7 @@ class PixivApiHttpTest {
     private val lastCookie = ConcurrentHashMap<String, String>()
     private val lastCsrf = ConcurrentHashMap<String, String>()
     private val lastRequestBody = ConcurrentHashMap<String, String>()
+    private val lastQuery = ConcurrentHashMap<String, String>()
     private var touchReturnsHtml = false
 
     private fun pathOf(exchange: HttpExchange): String = exchange.requestURI.path
@@ -43,6 +50,7 @@ class PixivApiHttpTest {
         server.createContext("/") { exchange ->
             val path = pathOf(exchange)
             hits.getOrPut(path) { AtomicInteger() }.incrementAndGet()
+            exchange.requestURI.rawQuery?.let { lastQuery[path] = it }
             exchange.requestHeaders.getFirst("Referer")?.let { lastReferer[path] = it }
             exchange.requestHeaders.getFirst("Cookie")?.let { lastCookie[path] = it }
             exchange.requestHeaders.getFirst("X-Csrf-Token")?.let { lastCsrf[path] = it }
@@ -87,6 +95,7 @@ class PixivApiHttpTest {
         path == "/ajax/user/self" -> 200 to SELF_JSON
         path.startsWith("/ajax/search/artworks/") -> 200 to SEARCH_ART_JSON
         path.startsWith("/ajax/search/novels/") -> 200 to SEARCH_NOVEL_JSON
+        path.startsWith("/ajax/search/tags/") -> 200 to SEARCH_TAG_INFO_JSON
         path == "/ajax/search/users" ->
             if (lastCookie[path] == "PHPSESSID=abc") 200 to SEARCH_USERS_JSON else 400 to "{\"error\":true}"
         path == "/ajax/illust/discovery" -> 200 to DISCOVERY_ILLUST_JSON
@@ -205,13 +214,43 @@ class PixivApiHttpTest {
     fun `discovery and ranking endpoints parse mixed categories`() = runBlocking {
         val illusts = api().illustDiscovery()
         val novels = api().novelDiscovery()
-        val ranked = api().rankingPage()
+        val ranked = api().rankingPage(mode = RankingMode.WEEKLY, category = SearchCategory.MANGA)
         assertEquals(1, illusts.size)
         assertEquals(SearchCategory.MANGA, illusts[0].category)
         assertEquals(1, novels.size)
         assertEquals("短篇 简介", novels[0].description)
         assertEquals(1, ranked.size)
         assertEquals("301", ranked[0].id)
+        val rankingQuery = lastQuery["/ranking.php"].orEmpty()
+        assertTrue(rankingQuery.contains("mode=weekly"))
+        assertTrue(rankingQuery.contains("content=manga"))
+    }
+
+    @Test
+    fun `search forwards sort order and age rating filters`() = runBlocking {
+        api().search(
+            word = "初音ミク",
+            mode = SearchMode.TAG,
+            order = SearchSortOrder.OLDEST,
+            rating = SearchRatingFilter.SAFE,
+        )
+        val q = lastQuery.entries.firstOrNull { it.key.startsWith("/ajax/search/artworks/") }?.value.orEmpty()
+        assertTrue(q.contains("order=date"))
+        assertTrue(q.contains("mode=safe"))
+        assertTrue(q.contains("s_mode=s_tag"))
+    }
+
+    @Test
+    fun `extractTrendingTags ranks non-adult topic tags and filters milestone tags`() {
+        val sample = listOf(
+            SearchItem("1", SearchCategory.ILLUST, "A", "", "", "1", "u", 0, 10, 10, 1, 0, listOf("初音ミク", "1000users入り", "オリジナル"), null),
+            SearchItem("2", SearchCategory.ILLUST, "B", "", "", "2", "v", 0, 10, 10, 1, 0, listOf("オリジナル", "風景", "R-18"), null),
+            SearchItem("3", SearchCategory.ILLUST, "C", "", "", "3", "w", 1, 10, 10, 1, 0, listOf("SecretAdultTag", "風景"), null),
+        )
+        val safeTags = extractTrendingTags(sample, limit = 5, includeAdult = false)
+        assertEquals(listOf("オリジナル", "初音ミク", "風景"), safeTags)
+        val allTags = extractTrendingTags(sample, limit = 5, includeAdult = true)
+        assertTrue(allTags.contains("SecretAdultTag"))
     }
 
     @Test
@@ -261,11 +300,27 @@ class PixivApiHttpTest {
     }
 
     @Test
-    fun `cookie is stripped on cross-host redirect`() {
+    fun `searchPage parses tag work totals and english translation`() = runBlocking {
+        val result = api().searchPage("風景", SearchMode.TAG)
+        assertEquals(2, result.items.size)
+        val meta = result.tagMetadata
+        assertNotNull(meta)
+        assertEquals("風景", meta!!.tag)
+        assertEquals("scenery", meta.englishName)
+        assertEquals(4200, meta.illustTotal)
+        assertEquals(180, meta.novelTotal)
+        assertEquals(4380, meta.totalWorks)
+        assertEquals("https://i.pximg.net/c/540x540_70/img-master/img/tag_cover.jpg", meta.officialCoverUrl)
+    }
+
+    @Test
+    fun `cookie and referer are stripped on cross-host redirect`() {
         var redirectedCookie: String? = "UNSET"
+        var redirectedReferer: String? = "UNSET"
         val externalServer = HttpServer.create(InetSocketAddress(0), 0).apply {
             createContext("/target") { ex ->
                 redirectedCookie = ex.requestHeaders.getFirst("Cookie")
+                redirectedReferer = ex.requestHeaders.getFirst("Referer")
                 val bytes = "ok".toByteArray(Charsets.UTF_8)
                 ex.sendResponseHeaders(200, bytes.size.toLong())
                 ex.responseBody.use { it.write(bytes) }
@@ -293,6 +348,7 @@ class PixivApiHttpTest {
                 assertEquals(200, resp.code)
             }
             assertNull(redirectedCookie)
+            assertNull(redirectedReferer)
         } finally {
             redirectServer.stop(0)
             externalServer.stop(0)
@@ -333,20 +389,24 @@ class PixivApiHttpTest {
         """
 
         const val SEARCH_ART_JSON = """
-        {"error":false,"body":{"illustManga":{"data":[{
+        {"error":false,"body":{"illustManga":{"total":4200,"data":[{
           "id":"100","title":"作品A","illustType":1,
           "url":"https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/01/01/00/00/00/100_p0_square1200.jpg",
           "userId":"1","userName":"u","xRestrict":0,"width":600,"height":800,
           "pageCount":3,"tags":["tag1","tag2"]
-        }]}}}
+        }]},"tagTranslation":{"風景":{"en":"scenery"}}}}
         """
 
         const val SEARCH_NOVEL_JSON = """
-        {"error":false,"body":{"novel":{"data":[{
+        {"error":false,"body":{"novel":{"total":180,"data":[{
           "id":"200","title":"小説B","url":"https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/01/01/00/00/00/200_p0_square1200.jpg",
           "userId":"2","userName":"v","xRestrict":0,"textCount":1200,"tags":["小説"],
           "seriesTitle":"連作"
         }]}}}
+        """
+
+        const val SEARCH_TAG_INFO_JSON = """
+        {"error":false,"body":{"tag":"風景","pixpedia":{"image":"https://i.pximg.net/c/540x540_70/img-master/img/tag_cover.jpg","id":38474246}}}
         """
 
         const val SEARCH_USERS_JSON = """

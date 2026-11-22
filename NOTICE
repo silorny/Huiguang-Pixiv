@@ -66,7 +66,7 @@
 7. OkHttp
    - 许可协议：Apache-2.0
    - 版权归属：Square, Inc.
-   - 主页：https://lysine.dev/okhttp/
+   - 主页：https://github.com/square/okhttp
 
 8. Okio
    - 许可协议：Apache-2.0
@@ -87,3 +87,8 @@
     - 许可协议：Apache-2.0
     - 版权归属：Google LLC
     - 主页：https://github.com/google/guava
+
+12. JetBrains Annotations
+    - 许可协议：Apache-2.0
+    - 版权归属：JetBrains s.r.o.
+    - 主页：https://github.com/JetBrains/java-annotations

@@ -70,9 +70,11 @@ data class SettingsState(
     val revealR18: Boolean = true,
     val language: AppLanguage = AppLanguage.SYSTEM,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val contourGlow: Boolean = true,
     val leftHanded: Boolean = false,
     val welcomeAccepted: Boolean = false,
     val history: List<HistoryEntry> = emptyList(),
+    val favoriteTags: List<String> = emptyList(),
     val reader: ReaderStyle = ReaderStyle(),
 )
 
@@ -124,6 +126,11 @@ class SettingsStore(private val store: KeyValueStore) {
     fun setThemeMode(value: ThemeMode) {
         store.putString(KEY_THEME, value.key)
         _state.value = _state.value.copy(themeMode = value)
+    }
+
+    fun setContourGlow(value: Boolean) {
+        store.putBoolean(KEY_CONTOUR_GLOW, value)
+        _state.value = _state.value.copy(contourGlow = value)
     }
 
     fun setLeftHanded(value: Boolean) {
@@ -180,9 +187,33 @@ class SettingsStore(private val store: KeyValueStore) {
         _state.value = _state.value.copy(history = next)
     }
 
+    fun removeHistory(pid: String, kind: String) {
+        val next = _state.value.history.filterNot { it.pid == pid && it.kind == kind }
+        if (next.size == _state.value.history.size) return
+        if (next.isEmpty()) store.remove(KEY_HISTORY) else store.putString(KEY_HISTORY, encodeHistory(next))
+        _state.value = _state.value.copy(history = next)
+    }
+
     fun clearHistory() {
         store.remove(KEY_HISTORY)
         _state.value = _state.value.copy(history = emptyList())
+    }
+
+    /** Toggles bookmarking [tag] locally; returns `true` when [tag] is now favorited. */
+    fun toggleFavoriteTag(tag: String): Boolean {
+        val normalized = tag.trim()
+        if (normalized.isEmpty()) return false
+        val currentList = _state.value.favoriteTags
+        val alreadyFavorited = normalized in currentList
+        val next = if (alreadyFavorited) {
+            currentList.filterNot { it == normalized }
+        } else {
+            listOf(normalized) + currentList
+        }
+        if (next.isEmpty()) store.remove(KEY_FAVORITE_TAGS)
+        else store.putString(KEY_FAVORITE_TAGS, encodeStringList(next))
+        _state.value = _state.value.copy(favoriteTags = next)
+        return !alreadyFavorited
     }
 
     private fun load(): SettingsState {
@@ -198,9 +229,11 @@ class SettingsStore(private val store: KeyValueStore) {
             revealR18 = store.getBoolean(KEY_REVEAL_R18, true),
             language = AppLanguage.fromTag(store.getString(KEY_LANGUAGE)),
             themeMode = ThemeMode.fromKey(store.getString(KEY_THEME)),
+            contourGlow = store.getBoolean(KEY_CONTOUR_GLOW, true),
             leftHanded = store.getBoolean(KEY_LEFT_HANDED, false),
             welcomeAccepted = store.getBoolean(KEY_WELCOME_ACCEPTED, false),
             history = loadHistory(),
+            favoriteTags = loadStringList(KEY_FAVORITE_TAGS),
             reader = ReaderStyle(
                 fontSize = store.getString(KEY_READER_FONT)?.toIntOrNull()?.coerceIn(MIN_FONT, MAX_FONT) ?: 17,
                 weight = store.getString(KEY_READER_WEIGHT)?.toIntOrNull() ?: 400,
@@ -258,15 +291,35 @@ class SettingsStore(private val store: KeyValueStore) {
         return array.toString()
     }
 
+    private fun loadStringList(key: String): List<String> {
+        val raw = store.getString(key) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val value = array.optString(i).trim()
+                    if (value.isNotEmpty() && value !in this) add(value)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun encodeStringList(items: List<String>): String =
+        JSONArray().apply { items.forEach { put(it) } }.toString()
+
     companion object {
         private const val KEY_COOKIE = "session_cookie"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_REVEAL_R18 = "reveal_r18"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_CONTOUR_GLOW = "contour_glow"
         private const val KEY_LEFT_HANDED = "left_handed"
         private const val KEY_WELCOME_ACCEPTED = "welcome_accepted"
         private const val KEY_HISTORY = "history"
+        private const val KEY_FAVORITE_TAGS = "favorite_tags"
         private const val KEY_READER_FONT = "reader_font_size"
         private const val KEY_READER_WEIGHT = "reader_font_weight"
         private const val KEY_READER_INDENT = "reader_indent"

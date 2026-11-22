@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.CouiPageDefaults
@@ -41,6 +42,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.store.AppLanguage
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.data.store.ThemeMode
+import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.design.components.SettingSelectRow
 import moe.huiguang.pixiv.design.components.SettingSwitchRow
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
@@ -197,6 +199,13 @@ fun SettingsScreen(
 
                 Group(title = stringResource(R.string.settings_interaction)) {
                     SettingSwitchRow(
+                        title = stringResource(R.string.settings_contour_glow),
+                        summary = stringResource(R.string.settings_contour_glow_summary),
+                        checked = state.contourGlow,
+                        onCheckedChange = { settings.setContourGlow(it) },
+                    )
+                    Divider()
+                    SettingSwitchRow(
                         title = stringResource(R.string.settings_left_handed),
                         summary = stringResource(R.string.settings_left_handed_summary),
                         checked = state.leftHanded,
@@ -207,6 +216,7 @@ fun SettingsScreen(
                 Group(title = stringResource(R.string.settings_storage)) {
                     Item(
                         onClick = { confirmClear = true },
+                        trailing = { NextChevron() },
                         summary = {
                             Text(
                                 text = stringResource(
@@ -226,7 +236,10 @@ fun SettingsScreen(
                 }
 
                 Group {
-                    Item(onClick = onOpenAbout) {
+                    Item(
+                        onClick = onOpenAbout,
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_title),
                             kind = CouiTextKind.ItemTitle,
@@ -247,6 +260,7 @@ fun SettingsScreen(
     }
 
     val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(dark) else null
+    val destructiveColors = CouiDialogDefaults.primaryActionColors(CouiDialogDefaults.colors(dark).destructive)
     Dialog(
         visible = confirmLogout,
         onDismissRequest = { confirmLogout = false },
@@ -255,12 +269,14 @@ fun SettingsScreen(
         material = dialogMaterial,
         backdrop = windowBackdrop,
         confirmAction = CouiDialogAction(
-            text = stringResource(R.string.action_ok),
+            text = stringResource(R.string.action_confirm),
             onClick = {
                 settings.logout()
                 onLoggedOut()
                 confirmLogout = false
             },
+            style = CouiDialogActionStyle.Primary,
+            colors = destructiveColors,
         ),
         dismissAction = CouiDialogAction(
             text = stringResource(R.string.action_cancel),
@@ -282,6 +298,8 @@ fun SettingsScreen(
                 cleared = true
                 confirmClear = false
             },
+            style = CouiDialogActionStyle.Primary,
+            colors = destructiveColors,
         ),
         dismissAction = CouiDialogAction(
             text = stringResource(R.string.action_cancel),

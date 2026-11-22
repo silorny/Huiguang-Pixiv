@@ -39,7 +39,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.itos.coui.layout.CouiPageColors
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.layout.CouiPageDefaults
@@ -54,6 +53,8 @@ import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.FloatingTabHeader
 import moe.huiguang.pixiv.design.components.GlowStatCapsule
+import moe.huiguang.pixiv.design.components.NextChevron
+import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SettingSwitchRow
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
@@ -69,6 +70,7 @@ fun ProfileTab(
     settings: SettingsStore,
     api: PixivApi,
     profileCache: SelfProfileCache,
+    scrollToTopTick: Int = 0,
     onLogin: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -110,6 +112,9 @@ fun ProfileTab(
     val effectBackdrop = com.itos.coui.backdrop.rememberCouiBackdrop()
     val effectDark = isDarkBackdrop(colors.background)
     val scroll = rememberScrollState()
+    LaunchedEffect(scrollToTopTick) {
+        if (scrollToTopTick > 0) scroll.animateScrollTo(0)
+    }
     val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
         .asPaddingValues().calculateTopPadding()
     val collapsed by remember { androidx.compose.runtime.derivedStateOf { scroll.value > 24 } }
@@ -140,6 +145,7 @@ fun ProfileTab(
                             color = colors.summary,
                         )
                     },
+                    trailing = { NextChevron() },
                     onClick = onLogin,
                 ) {
                     Text(
@@ -188,7 +194,10 @@ fun ProfileTab(
         }
 
         Group(title = stringResource(R.string.profile_group_browse)) {
-            Item(onClick = onOpenHistory) {
+            Item(
+                onClick = onOpenHistory,
+                trailing = { NextChevron() },
+            ) {
                 Text(
                     text = stringResource(R.string.history_title),
                     kind = CouiTextKind.ItemTitle,
@@ -196,7 +205,10 @@ fun ProfileTab(
                 )
             }
             Divider()
-            Item(onClick = onOpenBookmarks) {
+            Item(
+                onClick = onOpenBookmarks,
+                trailing = { NextChevron() },
+            ) {
                 Text(
                     text = stringResource(R.string.bookmarks_title),
                     kind = CouiTextKind.ItemTitle,
@@ -206,7 +218,10 @@ fun ProfileTab(
         }
 
         Group(title = stringResource(R.string.settings_title)) {
-            Item(onClick = onOpenSettings) {
+            Item(
+                onClick = onOpenSettings,
+                trailing = { NextChevron() },
+            ) {
                 Text(
                     text = stringResource(R.string.settings_title),
                     kind = CouiTextKind.ItemTitle,
@@ -241,8 +256,8 @@ private fun AccountHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (profile != null && profile.avatarUrl.isNotBlank()) {
-            AsyncImage(
-                model = profile.avatarUrl,
+            RetryableImage(
+                url = profile.avatarUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

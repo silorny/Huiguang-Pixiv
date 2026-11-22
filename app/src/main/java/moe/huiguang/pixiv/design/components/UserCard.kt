@@ -29,7 +29,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.shape.CouiShape
@@ -70,8 +69,8 @@ fun UserCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (user.avatarUrl.isNotBlank()) {
-                AsyncImage(
-                    model = user.avatarUrl,
+                RetryableImage(
+                    url = user.avatarUrl,
                     contentDescription = user.userName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

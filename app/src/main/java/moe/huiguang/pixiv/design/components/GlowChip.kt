@@ -34,6 +34,7 @@ fun GlowChip(
     dark: Boolean,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    whiteGlass: Boolean = false,
     blurRadius: Float = 0f,
 ) {
     val colors = CouiPageDefaults.themeColors()
@@ -46,6 +47,7 @@ fun GlowChip(
         cornerWeight = 1f,
         preset = SpotlightPreset.ChipTab,
         blurRadius = blurRadius,
+        whiteGlass = whiteGlass && !selected,
         colored = if (selected) colors.accent else null,
         cancelLightOnScroll = true,
         onClick = {

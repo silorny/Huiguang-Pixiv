@@ -30,7 +30,7 @@ import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 
 private val WorkRowThumbShape = CouiShape(12.dp, 3f)
-private val WorkRowCardShape = CouiShape(18.dp, 3f)
+internal val WorkRowCardShape = CouiShape(18.dp, 3f)
 
 /** Thumbnail row used by history, bookmarks and the series list. */
 @Composable
@@ -50,7 +50,6 @@ fun WorkRow(
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
-    val thumbShape = WorkRowThumbShape
     val cardShape = WorkRowCardShape
     val clickModifier = Modifier
         .couiButtonFeedback(dark, interaction, enabled, list = !surface)
@@ -76,10 +75,34 @@ fun WorkRow(
             .then(clickModifier)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     }
-    Row(
-        modifier
+    WorkRowBody(
+        thumbUrl = thumbUrl,
+        title = title,
+        author = author,
+        meta = meta,
+        highlighted = highlighted,
+        enabled = enabled,
+        modifier = modifier
             .fillMaxWidth()
             .then(container),
+    )
+}
+
+/** Shared thumbnail + text body used by [WorkRow] and [SwipeDeleteRow]. */
+@Composable
+internal fun WorkRowBody(
+    thumbUrl: String,
+    title: String,
+    author: String,
+    meta: String,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val colors = CouiPageDefaults.themeColors()
+    val thumbShape = WorkRowThumbShape
+    Row(
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (thumbUrl.isBlank()) {

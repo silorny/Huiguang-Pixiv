@@ -85,6 +85,8 @@ class AppContainer(context: Context) {
         novelCache.clear()
         searchCache.clear()
         homeFeedCache.clear()
+        imageLoader.memoryCache?.clear()
+        imageLoader.diskCache?.clear()
         runCatching {
             CookieManager.getInstance().apply {
                 removeAllCookies(null)

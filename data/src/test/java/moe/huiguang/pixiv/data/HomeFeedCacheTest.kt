@@ -35,6 +35,8 @@ class HomeFeedCacheTest {
         recommended = listOf(item("1"), item("2", category = SearchCategory.MANGA)),
         ranking = listOf(item("3")),
         following = listOf(item("4", category = SearchCategory.NOVEL)),
+        novelRecommended = listOf(item("5", category = SearchCategory.NOVEL)),
+        novelFollowing = listOf(item("6", category = SearchCategory.NOVEL)),
         tags = listOf("オリジナル", "初音ミク"),
     )
 

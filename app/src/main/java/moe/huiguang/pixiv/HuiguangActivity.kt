@@ -46,7 +46,10 @@ abstract class HuiguangActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
-            HuiguangTheme(darkTheme = dark) {
+            HuiguangTheme(
+                darkTheme = dark,
+                contourGlow = state.contourGlow,
+            ) {
                 ProvideCouiMenuBackdrop { windowSource ->
                     Box(Modifier.fillMaxSize().then(windowSource)) {
                         Page()

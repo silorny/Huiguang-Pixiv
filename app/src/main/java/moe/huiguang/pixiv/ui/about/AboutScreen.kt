@@ -81,6 +81,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.huiguang.pixiv.BuildConfig
 import moe.huiguang.pixiv.R
+import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
@@ -90,6 +91,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 private const val HUIGUANG_REPO_URL = "https://github.com/silorny/Huiguang-Pixiv"
+private const val TELEGRAM_GROUP_URL = "https://t.me/+PYSc-rhPaWs4Mjhl"
 private const val AUTHOR_GITHUB_HANDLE = "silorny"
 private const val AUTHOR_GITHUB_URL = "https://github.com/silorny"
 private const val AUTHOR_GITHUB_API = "https://api.github.com/users/silorny"
@@ -171,6 +173,7 @@ fun AboutScreen(
 
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showRepoDialog by remember { mutableStateOf(false) }
+    var showTelegramDialog by remember { mutableStateOf(false) }
 
     Box(
         Modifier
@@ -192,9 +195,7 @@ fun AboutScreen(
                 AboutAppCard()
 
                 AboutAuthorCard(
-                    onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AUTHOR_GITHUB_URL)))
-                    },
+                    onClick = { openExternalUrl(context, AUTHOR_GITHUB_URL) },
                 )
 
                 Group(title = stringResource(R.string.about_group_version)) {
@@ -214,7 +215,10 @@ fun AboutScreen(
                         )
                     }
                     Divider()
-                    Item(onClick = { showUpdateDialog = true }) {
+                    Item(
+                        onClick = { showUpdateDialog = true },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_check_update),
                             kind = CouiTextKind.ItemTitle,
@@ -224,7 +228,10 @@ fun AboutScreen(
                 }
 
                 Group(title = stringResource(R.string.about_group_legal)) {
-                    Item(onClick = { onOpenDoc("agreement") }) {
+                    Item(
+                        onClick = { onOpenDoc("agreement") },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_user_agreement),
                             kind = CouiTextKind.ItemTitle,
@@ -232,7 +239,10 @@ fun AboutScreen(
                         )
                     }
                     Divider()
-                    Item(onClick = { onOpenDoc("copyright") }) {
+                    Item(
+                        onClick = { onOpenDoc("copyright") },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_copyright_disclaimer),
                             kind = CouiTextKind.ItemTitle,
@@ -240,7 +250,10 @@ fun AboutScreen(
                         )
                     }
                     Divider()
-                    Item(onClick = { onOpenDoc("licenses") }) {
+                    Item(
+                        onClick = { onOpenDoc("licenses") },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_open_source),
                             kind = CouiTextKind.ItemTitle,
@@ -250,7 +263,10 @@ fun AboutScreen(
                 }
 
                 Group(title = stringResource(R.string.about_group_community)) {
-                    Item(onClick = { onOpenDoc("ack") }) {
+                    Item(
+                        onClick = { onOpenDoc("ack") },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_acknowledgements),
                             kind = CouiTextKind.ItemTitle,
@@ -258,9 +274,23 @@ fun AboutScreen(
                         )
                     }
                     Divider()
-                    Item(onClick = { showRepoDialog = true }) {
+                    Item(
+                        onClick = { showRepoDialog = true },
+                        trailing = { NextChevron() },
+                    ) {
                         Text(
                             text = stringResource(R.string.about_github_repo),
+                            kind = CouiTextKind.ItemTitle,
+                            color = colors.title,
+                        )
+                    }
+                    Divider()
+                    Item(
+                        onClick = { showTelegramDialog = true },
+                        trailing = { NextChevron() },
+                    ) {
+                        Text(
+                            text = stringResource(R.string.about_telegram_group),
                             kind = CouiTextKind.ItemTitle,
                             color = colors.title,
                         )
@@ -311,7 +341,7 @@ fun AboutScreen(
             text = stringResource(R.string.about_github_open_repo),
             onClick = {
                 showRepoDialog = false
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HUIGUANG_REPO_URL)))
+                openExternalUrl(context, HUIGUANG_REPO_URL)
             },
             style = CouiDialogActionStyle.Primary,
             colors = CouiDialogDefaults.primaryActionColors(CouiTheme.colorScheme.accent),
@@ -323,6 +353,33 @@ fun AboutScreen(
                 val cm = context.getSystemService(ClipboardManager::class.java)
                 cm?.setPrimaryClip(ClipData.newPlainText("Huiguang-Pixiv", HUIGUANG_REPO_URL))
                 Toast.makeText(context, resources.getString(R.string.about_github_copied), Toast.LENGTH_SHORT).show()
+            },
+        ),
+    )
+
+    Dialog(
+        visible = showTelegramDialog,
+        onDismissRequest = { showTelegramDialog = false },
+        title = stringResource(R.string.about_telegram_group),
+        message = stringResource(R.string.about_telegram_dialog_msg),
+        material = dialogMaterial,
+        backdrop = windowBackdrop,
+        confirmAction = CouiDialogAction(
+            text = stringResource(R.string.about_telegram_open),
+            onClick = {
+                showTelegramDialog = false
+                openExternalUrl(context, TELEGRAM_GROUP_URL)
+            },
+            style = CouiDialogActionStyle.Primary,
+            colors = CouiDialogDefaults.primaryActionColors(CouiTheme.colorScheme.accent),
+        ),
+        dismissAction = CouiDialogAction(
+            text = stringResource(R.string.about_github_copy),
+            onClick = {
+                showTelegramDialog = false
+                val cm = context.getSystemService(ClipboardManager::class.java)
+                cm?.setPrimaryClip(ClipData.newPlainText("Huiguang-Telegram", TELEGRAM_GROUP_URL))
+                Toast.makeText(context, resources.getString(R.string.about_telegram_copied), Toast.LENGTH_SHORT).show()
             },
         ),
     )
@@ -549,8 +606,8 @@ private val OpenSourceComponents = listOf(
         name = "OkHttp",
         licenseShort = "Apache-2.0",
         licenseAsset = "apache-2.0",
-        homepageHost = "lysine.dev",
-        homepageUrl = "https://lysine.dev/okhttp/",
+        homepageHost = "github.com",
+        homepageUrl = "https://github.com/square/okhttp",
         copyright = "Square, Inc.",
     ),
     OpenSourceComponent(
@@ -584,6 +641,14 @@ private val OpenSourceComponents = listOf(
         homepageHost = "github.com",
         homepageUrl = "https://github.com/google/guava",
         copyright = "Google LLC",
+    ),
+    OpenSourceComponent(
+        name = "JetBrains Annotations",
+        licenseShort = "Apache-2.0",
+        licenseAsset = "apache-2.0",
+        homepageHost = "github.com",
+        homepageUrl = "https://github.com/JetBrains/java-annotations",
+        copyright = "JetBrains s.r.o.",
     ),
 )
 
@@ -769,9 +834,7 @@ private fun OpenSourceLicensesContent(
                             color = colors.summary,
                         )
                     },
-                    onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(component.homepageUrl)))
-                    },
+                    onClick = { openExternalUrl(context, component.homepageUrl) },
                 ) {
                     Text(
                         text = stringResource(R.string.license_field_homepage),
@@ -879,5 +942,13 @@ private fun VerbatimLicenseContent(assetName: String) {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         )
+    }
+}
+
+private fun openExternalUrl(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        Toast.makeText(context, context.getString(R.string.action_failed), Toast.LENGTH_SHORT).show()
     }
 }

@@ -1,6 +1,7 @@
 package moe.huiguang.pixiv.ui.search
 
 import moe.huiguang.pixiv.data.model.SearchItem
+import moe.huiguang.pixiv.data.model.TagMetadata
 
 /**
  * Process-level cache for search result pages.
@@ -16,6 +17,7 @@ class SearchResultsCache(private val capacity: Int = 8) {
         val items: List<SearchItem>,
         val nextPage: Int,
         val endReached: Boolean,
+        val tagMetadata: TagMetadata? = null,
     )
 
     private val entries = object : LinkedHashMap<String, Entry>(capacity, 0.75f, true) {
