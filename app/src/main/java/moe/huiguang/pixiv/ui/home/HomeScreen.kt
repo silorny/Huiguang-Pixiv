@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
@@ -35,6 +36,8 @@ import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -58,7 +61,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
@@ -73,14 +78,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageDefaults
@@ -91,7 +93,6 @@ import com.itos.coui.menu.Menu
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
@@ -111,6 +112,98 @@ import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 
+@Stable
+class HomeTabState internal constructor(
+    val gridStates: List<LazyStaggeredGridState>,
+    private val sectionState: MutableIntState,
+    private val recommendedFilterState: MutableIntState,
+    private val rankingTabState: MutableIntState,
+    private val followingFilterState: MutableIntState,
+) {
+    var section: Int
+        get() = sectionState.intValue
+        set(value) { sectionState.intValue = value }
+    var recommendedFilter: Int
+        get() = recommendedFilterState.intValue
+        set(value) { recommendedFilterState.intValue = value }
+    var rankingTab: Int
+        get() = rankingTabState.intValue
+        set(value) { rankingTabState.intValue = value }
+    var followingFilter: Int
+        get() = followingFilterState.intValue
+        set(value) { followingFilterState.intValue = value }
+}
+
+@Composable
+fun rememberHomeTabState(): HomeTabState {
+    val gridStates = List(3) { rememberLazyStaggeredGridState() }
+    val sectionState = rememberSaveable { mutableIntStateOf(0) }
+    val recommendedFilterState = rememberSaveable { mutableIntStateOf(0) }
+    val rankingTabState = rememberSaveable { mutableIntStateOf(0) }
+    val followingFilterState = rememberSaveable { mutableIntStateOf(0) }
+    return remember(gridStates) {
+        HomeTabState(
+            gridStates = gridStates,
+            sectionState = sectionState,
+            recommendedFilterState = recommendedFilterState,
+            rankingTabState = rankingTabState,
+            followingFilterState = followingFilterState,
+        )
+    }
+}
+
+@Composable
+fun HomeTopChrome(
+    tabState: HomeTabState,
+    backdrop: CouiBackdrop,
+    statusTop: Dp,
+) {
+    val section = tabState.section
+    val rankingTab = tabState.rankingTab
+    val recommendedFilter = tabState.recommendedFilter
+    val followingFilter = tabState.followingFilter
+    val activeGrid = tabState.gridStates[section]
+    val collapsed by remember(activeGrid) {
+        derivedStateOf {
+            activeGrid.firstVisibleItemIndex > 0 || activeGrid.firstVisibleItemScrollOffset > 24
+        }
+    }
+    val categoryItems = if (section == 1) {
+        listOf(
+            CouiMenuItem(0, stringResource(R.string.ranking_daily), selected = rankingTab == 0),
+            CouiMenuItem(1, stringResource(R.string.ranking_weekly), selected = rankingTab == 1),
+            CouiMenuItem(2, stringResource(R.string.ranking_monthly), selected = rankingTab == 2),
+            CouiMenuItem(3, stringResource(R.string.ranking_rookie), selected = rankingTab == 3),
+            CouiMenuItem(4, stringResource(R.string.filter_illust), selected = rankingTab == 4, dividerBefore = true),
+            CouiMenuItem(5, stringResource(R.string.filter_manga), selected = rankingTab == 5),
+        )
+    } else {
+        val activeWorkFilter = if (section == 2) followingFilter else recommendedFilter
+        listOf(
+            CouiMenuItem(0, stringResource(R.string.filter_all), selected = activeWorkFilter == 0),
+            CouiMenuItem(1, stringResource(R.string.filter_illust), selected = activeWorkFilter == 1),
+            CouiMenuItem(2, stringResource(R.string.filter_manga), selected = activeWorkFilter == 2),
+            CouiMenuItem(3, stringResource(R.string.filter_novel), selected = activeWorkFilter == 3),
+        )
+    }
+    HomeOverlayHeader(
+        appTitle = stringResource(R.string.app_name),
+        collapsed = collapsed,
+        statusTop = statusTop,
+        section = section,
+        onSectionSelected = { tabState.section = it },
+        categoryItems = categoryItems,
+        onCategorySelected = { selectedKey ->
+            when (section) {
+                1 -> tabState.rankingTab = selectedKey
+                2 -> tabState.followingFilter = selectedKey
+                else -> tabState.recommendedFilter = selectedKey
+            }
+        },
+        backdrop = backdrop,
+    )
+}
+
 /**
  * Home: COUI collapsing [LargeTopAppBar] ("绘光") with the section
  * [SegmentedControl] (推荐 / 排行榜 / 关注新作) tucked cleanly underneath,
@@ -123,6 +216,9 @@ fun HomeScreen(
     api: PixivApi,
     settings: SettingsStore,
     cache: HomeFeedCache,
+    tabState: HomeTabState = rememberHomeTabState(),
+    effectBackdrop: CouiBackdrop,
+    refreshBackdrop: CouiBackdrop = effectBackdrop,
     scrollToTopTick: Int = 0,
     onOpenWork: (SearchItem) -> Unit,
     onOpenPixivision: (String) -> Unit,
@@ -143,12 +239,11 @@ fun HomeScreen(
     val recommendedHeadCutoff by vm.recommendedHeadCutoff.collectAsState()
     val followingHeadCutoff by vm.followingHeadCutoff.collectAsState()
 
-    // 3 sections (推荐 / 排行榜 / 关注新作) with independent saveable scroll & filter state.
-    val gridStates = List(3) { rememberLazyStaggeredGridState() }
-    var section by rememberSaveable { mutableIntStateOf(0) }
-    var recommendedFilter by rememberSaveable { mutableIntStateOf(0) }
-    var rankingTab by rememberSaveable { mutableIntStateOf(0) }
-    var followingFilter by rememberSaveable { mutableIntStateOf(0) }
+    val gridStates = tabState.gridStates
+    val section = tabState.section
+    val recommendedFilter = tabState.recommendedFilter
+    val rankingTab = tabState.rankingTab
+    val followingFilter = tabState.followingFilter
     val activeGrid = gridStates[section]
 
     LaunchedEffect(scrollToTopTick) {
@@ -178,16 +273,9 @@ fun HomeScreen(
     }
 
     val density = LocalDensity.current
-    val backdrop = rememberCouiBackdrop()
     val dark = CouiTheme.isDark
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
-    val collapsed by remember(activeGrid) {
-        derivedStateOf {
-            activeGrid.firstVisibleItemIndex > 0 || activeGrid.firstVisibleItemScrollOffset > 24
-        }
-    }
 
     // Pull-to-refresh state across all sections when overscrolling downward at the top.
     val triggerPullPx = with(density) { 72.dp.toPx() }
@@ -260,11 +348,7 @@ fun HomeScreen(
         is HomeUiState.Content -> 2
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(colors.background),
-    ) {
+    Box(Modifier.fillMaxSize()) {
         Crossfade(
             targetState = statePhase,
             animationSpec = tween(200),
@@ -284,8 +368,6 @@ fun HomeScreen(
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .couiBackdrop(backdrop)
-                            .background(colors.background)
                             .nestedScroll(pullConnection),
                     ) {
                         SlideSwitcher(index = section, modifier = Modifier.fillMaxSize()) { selected ->
@@ -430,7 +512,7 @@ fun HomeScreen(
                                 items(
                                     items = visible,
                                     key = { "$selected-$activeCategory-${it.category.name}-${it.id}" },
-                                    contentType = { "artwork" },
+                                    contentType = { if (it.category == SearchCategory.NOVEL) "novel" else "artwork" },
                                 ) { item ->
                                     ArtworkCard(
                                         item = item,
@@ -482,7 +564,7 @@ fun HomeScreen(
                             else -> stringResource(R.string.home_pull_refresh)
                         }
                         GlowSurface(
-                            backdrop = backdrop,
+                            backdrop = refreshBackdrop,
                             dark = dark,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -510,42 +592,6 @@ fun HomeScreen(
             }
         }
         }
-
-        val categoryItems = if (section == 1) {
-            listOf(
-                CouiMenuItem(0, stringResource(R.string.ranking_daily), selected = rankingTab == 0),
-                CouiMenuItem(1, stringResource(R.string.ranking_weekly), selected = rankingTab == 1),
-                CouiMenuItem(2, stringResource(R.string.ranking_monthly), selected = rankingTab == 2),
-                CouiMenuItem(3, stringResource(R.string.ranking_rookie), selected = rankingTab == 3),
-                CouiMenuItem(4, stringResource(R.string.filter_illust), selected = rankingTab == 4, dividerBefore = true),
-                CouiMenuItem(5, stringResource(R.string.filter_manga), selected = rankingTab == 5),
-            )
-        } else {
-            val activeWorkFilter = if (section == 2) followingFilter else recommendedFilter
-            listOf(
-                CouiMenuItem(0, stringResource(R.string.filter_all), selected = activeWorkFilter == 0),
-                CouiMenuItem(1, stringResource(R.string.filter_illust), selected = activeWorkFilter == 1),
-                CouiMenuItem(2, stringResource(R.string.filter_manga), selected = activeWorkFilter == 2),
-                CouiMenuItem(3, stringResource(R.string.filter_novel), selected = activeWorkFilter == 3),
-            )
-        }
-
-        HomeOverlayHeader(
-            appTitle = stringResource(R.string.app_name),
-            collapsed = collapsed,
-            statusTop = statusTop,
-            section = section,
-            onSectionSelected = { section = it },
-            categoryItems = categoryItems,
-            onCategorySelected = { selectedKey ->
-                when (section) {
-                    1 -> rankingTab = selectedKey
-                    2 -> followingFilter = selectedKey
-                    else -> recommendedFilter = selectedKey
-                }
-            },
-            backdrop = backdrop,
-        )
     }
 }
 
@@ -589,7 +635,10 @@ private fun HomeOverlayHeader(
     val collapsedStartPad = 20.dp + collapsedTitleWidthDp + 8.dp
     val collapsedEndPad = 20.dp + 40.dp + 8.dp
     val switcherShiftYPx = with(density) { (12.dp - (64.dp + 6.dp)).toPx() }
-    val p = collapseProgressState.value
+    val switcherBaseTopPx = with(density) { (statusTop + 64.dp + 6.dp).roundToPx() }
+    val defaultSidePadPx = with(density) { 16.dp.roundToPx() }
+    val collapsedStartPx = with(density) { collapsedStartPad.roundToPx() }
+    val collapsedEndPx = with(density) { collapsedEndPad.roundToPx() }
 
     Box(Modifier.fillMaxWidth()) {
         HomeTopBarSurface(
@@ -605,13 +654,20 @@ private fun HomeOverlayHeader(
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = lerp(16.dp, collapsedStartPad, p),
-                    end = lerp(16.dp, collapsedEndPad, p),
-                    top = statusTop + 64.dp + 6.dp,
-                )
+                .layout { measurable, constraints ->
+                    val p = collapseProgressState.value
+                    val startPx = (defaultSidePadPx + (collapsedStartPx - defaultSidePadPx) * p).toInt()
+                    val endPx = (defaultSidePadPx + (collapsedEndPx - defaultSidePadPx) * p).toInt()
+                    val childW = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
+                    val placeable = measurable.measure(
+                        constraints.copy(minWidth = childW, maxWidth = childW),
+                    )
+                    layout(constraints.maxWidth, switcherBaseTopPx + placeable.height) {
+                        placeable.placeRelative(startPx, switcherBaseTopPx)
+                    }
+                }
                 .graphicsLayer {
-                    translationY = switcherShiftYPx * p
+                    translationY = switcherShiftYPx * collapseProgressState.value
                 },
         ) {
             SectionSwitcher(
@@ -636,12 +692,17 @@ private fun HomeTopBarSurface(
 ) {
     val dark = CouiTheme.isDark
     var menuOpen by remember { mutableStateOf(false) }
-    TopAppBarSurface(
-        modifier = Modifier.fillMaxWidth(),
-        backdrop = backdrop,
-        backgroundAlpha = alphaProvider(),
-        gradientColor = gradientColor,
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {},
     ) {
+        HomeTopBarBackdrop(
+            backdrop = backdrop,
+            alphaProvider = alphaProvider,
+            gradientColor = gradientColor,
+            modifier = Modifier.matchParentSize(),
+        )
         Row(
             Modifier
                 .fillMaxWidth()
@@ -691,6 +752,25 @@ private fun HomeTopBarSurface(
 }
 
 @Composable
+private fun HomeTopBarBackdrop(
+    backdrop: CouiBackdrop,
+    alphaProvider: () -> Float,
+    gradientColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val alpha = alphaProvider()
+    if (alpha <= 0.001f) return
+    TopAppBarSurface(
+        modifier = modifier,
+        backdrop = backdrop,
+        backgroundAlpha = alpha,
+        gradientColor = gradientColor,
+    ) {
+        Spacer(Modifier.fillMaxSize())
+    }
+}
+
+@Composable
 private fun SectionHeader(
     text: String,
     modifier: Modifier = Modifier,
@@ -707,6 +787,9 @@ private fun SectionHeader(
     )
 }
 
+private val PixivisionCardShape = moe.huiguang.pixiv.design.shape.CachedCouiShape(18.dp, 3f)
+private val PixivisionBadgeShape = moe.huiguang.pixiv.design.shape.CachedCouiShape(8.dp, 3f)
+
 @Composable
 private fun PixivisionCard(
     item: PixivisionSummary,
@@ -716,12 +799,11 @@ private fun PixivisionCard(
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
-    val shape = CouiShape(18.dp, 3f)
     Column(
         Modifier
             .width(236.dp)
-            .clip(shape)
-            .background(colors.card, shape)
+            .clip(PixivisionCardShape)
+            .background(colors.card, PixivisionCardShape)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -751,7 +833,7 @@ private fun PixivisionCard(
                         .padding(8.dp)
                         .background(
                             colors.accent.copy(alpha = 0.9f),
-                            CouiShape(8.dp, 3f),
+                            PixivisionBadgeShape,
                         )
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 ) {

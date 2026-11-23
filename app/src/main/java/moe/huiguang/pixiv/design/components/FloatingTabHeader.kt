@@ -3,9 +3,11 @@ package moe.huiguang.pixiv.design.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -53,12 +56,21 @@ fun FloatingTabHeader(
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
         label = "tabTitle",
     )
-    TopAppBarSurface(
-        modifier = Modifier.fillMaxWidth(),
-        backdrop = backdrop,
-        backgroundAlpha = barAlpha,
-        gradientColor = colors.background,
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {},
     ) {
+        if (barAlpha > 0.001f) {
+            TopAppBarSurface(
+                modifier = Modifier.matchParentSize(),
+                backdrop = backdrop,
+                backgroundAlpha = barAlpha,
+                gradientColor = colors.background,
+            ) {
+                Spacer(Modifier.fillMaxSize())
+            }
+        }
         Row(
             Modifier
                 .fillMaxWidth()

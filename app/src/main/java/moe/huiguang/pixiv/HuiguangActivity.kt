@@ -50,7 +50,7 @@ abstract class HuiguangActivity : ComponentActivity() {
                 darkTheme = dark,
                 contourGlow = state.contourGlow,
             ) {
-                ProvideCouiMenuBackdrop { windowSource ->
+                ProvideCouiMenuBackdrop(isolateContent = false) { windowSource ->
                     Box(Modifier.fillMaxSize().then(windowSource)) {
                         Page()
                     }

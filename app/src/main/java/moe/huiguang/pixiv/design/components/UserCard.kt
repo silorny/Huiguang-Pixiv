@@ -31,11 +31,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.data.model.UserSearchItem
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+import moe.huiguang.pixiv.design.shape.g2CornerMask
+
+private val UserCardShape = CachedCouiShape(18.dp, 3f)
+private val UserPreviewThumbShape = CachedCouiShape(12.dp, 3f)
 
 /** Author card shown in the "作者" tab of search results. */
 @Composable
@@ -53,8 +57,7 @@ fun UserCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(CouiShape(18.dp, 3f))
-            .background(colors.card)
+            .background(colors.card, UserCardShape)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -132,8 +135,8 @@ fun UserCard(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .clip(CouiShape(12.dp, 3f))
-                            .background(colors.background),
+                            .background(colors.background)
+                            .g2CornerMask(UserPreviewThumbShape, colors.card),
                     )
                 }
                 repeat(3 - user.recentWorks.take(3).size) {

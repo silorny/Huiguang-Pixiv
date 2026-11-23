@@ -1,5 +1,6 @@
 package moe.huiguang.pixiv.ui.profile
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,10 +39,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.layout.CouiPageColors
-import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -59,6 +62,21 @@ import moe.huiguang.pixiv.design.components.SettingSwitchRow
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
 
+@Composable
+fun ProfileTopChrome(
+    scroll: ScrollState,
+    backdrop: CouiBackdrop,
+    statusTop: Dp,
+) {
+    val collapsed by remember(scroll) { derivedStateOf { scroll.value > 24 } }
+    FloatingTabHeader(
+        title = stringResource(R.string.tab_me),
+        backdrop = backdrop,
+        collapsed = collapsed,
+        statusTop = statusTop,
+    )
+}
+
 /**
  * "我的" tab: account card (avatar / name / UID), a read-only statistics
  * capsule, then the browse, settings and about entries. Signing out lives in
@@ -70,6 +88,8 @@ fun ProfileTab(
     settings: SettingsStore,
     api: PixivApi,
     profileCache: SelfProfileCache,
+    scroll: ScrollState = rememberScrollState(),
+    effectBackdrop: CouiBackdrop,
     scrollToTopTick: Int = 0,
     onLogin: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -107,32 +127,18 @@ fun ProfileTab(
         profileCache.put(uid, SelfProfileCache.Entry(loaded, works))
     }
 
-    val backdrop = com.itos.coui.backdrop.rememberCouiBackdrop()
-    // Flat sibling source for the account stats capsule.
-    val effectBackdrop = com.itos.coui.backdrop.rememberCouiBackdrop()
     val effectDark = isDarkBackdrop(colors.background)
-    val scroll = rememberScrollState()
     LaunchedEffect(scrollToTopTick) {
         if (scrollToTopTick > 0) scroll.animateScrollTo(0)
     }
     val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
         .asPaddingValues().calculateTopPadding()
-    val collapsed by remember { androidx.compose.runtime.derivedStateOf { scroll.value > 24 } }
 
-    Box(Modifier.fillMaxSize()) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .couiBackdrop(effectBackdrop)
-            .background(colors.background),
-    )
     Column(
         Modifier
             .fillMaxSize()
-            .background(colors.background)
-            .couiVerticalScroll(scroll)
-            .padding(padding)
-            .consumeWindowInsets(padding),
+            .consumeWindowInsets(padding)
+            .couiVerticalScroll(scroll),
     ) {
         Spacer(Modifier.height(statusTop + 64.dp))
         if (session == null) {
@@ -231,15 +237,7 @@ fun ProfileTab(
         }
 
         // Clear the floating navigation capsule, including at large font scales.
-        Spacer(Modifier.height(24.dp))
-    }
-
-    FloatingTabHeader(
-        title = stringResource(R.string.tab_me),
-        backdrop = backdrop,
-        collapsed = collapsed,
-        statusTop = statusTop,
-    )
+        Spacer(Modifier.height(padding.calculateBottomPadding() + 24.dp))
     }
 }
 

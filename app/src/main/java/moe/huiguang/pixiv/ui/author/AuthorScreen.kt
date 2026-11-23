@@ -236,15 +236,15 @@ fun AuthorScreen(
         Box(
             Modifier
                 .fillMaxSize()
+                .couiBackdrop(effectBackdrop)
+                .background(colors.background),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .couiBackdrop(effectBackdrop)
-                    .background(colors.background),
-            )
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
                 state = activeGridState,

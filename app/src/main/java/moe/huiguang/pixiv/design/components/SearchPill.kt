@@ -70,6 +70,7 @@ fun SearchPill(
         search = true,
         cancelLightOnScroll = true,
         foregroundComposition = false,
+        staticSurface = true,
     ) {
         Row(
             Modifier

@@ -532,6 +532,7 @@ private fun PixivisionWorkCard(
                     backdrop = imageBackdrop,
                     dark = dark,
                     blurRadius = 24f,
+                    staticSurface = false,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(12.dp),

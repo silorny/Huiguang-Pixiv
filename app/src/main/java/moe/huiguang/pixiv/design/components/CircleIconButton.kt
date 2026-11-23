@@ -33,6 +33,7 @@ fun CircleIconButton(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
     blurRadius: Float = 20f,
+    staticSurface: Boolean = false,
 ) {
     val iconTint = if (dark) Color.White else CouiPresets.Light.onSurface
     GlowSurface(
@@ -46,6 +47,7 @@ fun CircleIconButton(
         whiteGlass = true,
         onClick = onClick,
         foregroundComposition = true,
+        staticSurface = staticSurface,
     ) {
         Image(
             imageVector = icon,

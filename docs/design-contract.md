@@ -8,13 +8,13 @@
 
 | 项 | 值 | 依据 |
 | --- | --- | --- |
-| COUI | `io.github.itoseo:coui:0.0.1-alpha11` | 原生 Compose COUI 组件与渲染库 |
-| COUI 图标 | `io.github.itoseo:coui-icons:0.0.1-alpha11` | 系统配套线性与填充图标集 |
+| COUI | `io.github.itoseo:coui:0.0.1-alpha15` | 原生 Compose COUI 组件与渲染库 |
+| COUI 图标 | `io.github.itoseo:coui-icons:0.0.1-alpha15` | 系统配套线性与填充图标集 |
 | 不用 | `coui-material3` | 纯 COUI 模式，不引入 Material 3 |
 | AGP / Gradle | 9.4.1 / 9.8.0 | 库要求 AGP ≥ 9.1.0 |
 | Kotlin / Compose 编译器 | 2.4.20 / 2.4.20 | 与库基线一致 |
 | Compose BOM | `androidx.compose:compose-bom-alpha:2026.08.01` | 宿主显式对齐 |
-| compileSdk / targetSdk | 37 / 37 | 库 `minCompileSdk = 37` |
+| compileSdk / targetSdk | 37.1 / 37 | 库 `minCompileSdk = 37.1` |
 | minSdk | **34** | 融合底栏、FAB、模糊顶栏及阴影特性均依赖 API 34+ |
 | Java 字节码 | 17 | 编译目标版本 |
 | 核心依赖 | OkHttp 5.5.0、Coil 3.6.3、coroutines 1.11.0、activity-compose 1.13.0、lifecycle 2.11.0 | — |
@@ -66,9 +66,9 @@
 | 分组间距 | 16dp（有标题时顶部 12dp） |
 | 顶栏高度 | 52dp |
 | 分隔线 | 0.33dp（至少 1 物理像素） |
-| 图片卡圆角 | `CouiShape(18.dp, cornerWeight = 3f)` |
+| 图片卡圆角 | `CachedCouiShape(20.dp / 18.dp, cornerWeight = 3f)` |
 
-按钮、底栏、FAB 与胶囊组件均使用组件 Defaults 自带的 `CouiShape` / `CouiCapsuleShape`。
+按钮、底栏、FAB 与胶囊组件均使用组件 Defaults 自带的 `CouiShape` / `CouiCapsuleShape`；瀑布流与列表媒体卡通过 `CachedCouiShape`（缓存单角曲率、轮廓与 `g2CornerMask` 四角遮罩）保留连续曲率。
 
 ---
 
@@ -84,15 +84,15 @@
 | `SegmentedControl` | `com.itos.coui.segmentbutton` | 放 `Group` 内走普通填色、不传 `backdrop`；悬浮于内容上时传入不透明兄弟 `backdrop` |
 | `Switch` / `RadioButton` | `com.itos.coui.switch` 等 | 状态受控，整行点击由容器承载 |
 | `Dialog` / `LoadingDialog` | `com.itos.coui.dialog` | 传入 `visible` 控制显隐，不使用 `if (visible)` 包裹以免切断退场动画 |
-| `Menu` | `com.itos.coui.menu` | 窗口级采样配合 `ProvideCouiMenuBackdrop` |
+| `Menu` | `com.itos.coui.menu` | 窗口级采样配合 `ProvideCouiMenuBackdrop(isolateContent = false)` |
 | `Text` | `com.itos.coui.text` | 使用预设 `CouiTextKind` |
 | `CouiIcons.Filled/Outlined` | `com.itos.coui.icons` | 系统矢量图标库；缺失图标以 `res/drawable/ic_*.xml`（24dp 线性）补齐 |
-| `rememberCouiBackdrop` / `Modifier.couiBackdrop` | `com.itos.coui.backdrop` | 自定义悬浮件须使用不透明兄弟背景源，严禁采样祖先节点造成渲染环 |
+| `rememberCouiBackdrop` / `Modifier.couiBackdrop` | `com.itos.coui.backdrop` | 自定义悬浮件须使用不透明兄弟背景源，严禁采样祖先节点造成渲染环；主壳层将顶栏 `topBackdrop` 与底栏 `bottomBackdrop` 拆分采样并与前景直出绘制解耦 |
 | `couiVerticalScroll` | `com.itos.coui.scroll` | 统一列表/内容滚动与回弹手势 |
 | `PrimaryButton` | `design/components` | 主操作 46dp 强调色胶囊按钮 |
-| `ArtworkCard` | `design/components` | 18dp 平滑圆角媒体卡（瀑布流与横向列表共用） |
-| `TagChip` | `design/components` | 标签跳转胶囊 |
-| `GlowSurface` | `design/components` | 自定义凝光悬浮外壳（浮动材质 + 投影/caustic + 轮廓/跟手光 + 按压回弹） |
+| `ArtworkCard` | `design/components` | `CachedCouiShape`（20dp/14dp/8dp）平滑圆角媒体卡（瀑布流与横向列表共用） |
+| `TagChip` | `design/components` | `CouiCapsuleShape` 标签跳转胶囊 |
+| `GlowSurface` | `design/components` | 自定义凝光悬浮外壳（浮动材质 + 投影/caustic + 轮廓/跟手光 + 按压回弹；平坦底色启用 `staticSurface = true` 底图缓存） |
 | `GlowChip` | `design/components` | 32dp 凝光状态胶囊 |
 | `CircleIconButton` | `design/components` | 详情页与查看器顶栏悬浮圆钮 |
 | `GlowStatCapsule` | `design/components` | 详情/作者/账号统计数据胶囊（无分割线） |

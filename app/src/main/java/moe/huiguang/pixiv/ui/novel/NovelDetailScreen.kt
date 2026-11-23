@@ -323,16 +323,15 @@ fun NovelDetailScreen(
         Box(
             Modifier
                 .fillMaxSize()
+                .couiBackdrop(effectBackdrop)
+                .background(colors.background),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .couiBackdrop(effectBackdrop)
-                    .background(colors.background),
-            )
-
             Column(
                 Modifier
                     .fillMaxSize()

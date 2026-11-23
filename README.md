@@ -1,11 +1,11 @@
 # 绘光 · Huiguang
 
-一款基于原生 Jetpack Compose 与 [COUI-Kit](https://github.com/ItosEO/COUI-Kit)（`0.0.1-alpha11`）构建的第三方 Pixiv Android 客户端。全应用遵循纯 COUI 视觉与交互规范，不依赖 Material 3，提供插画、漫画、小说及 Pixivision 特辑的完整浏览、搜索、收藏与阅读体验。
+一款基于原生 Jetpack Compose 与 [COUI-Kit](https://github.com/ItosEO/COUI-Kit)（`0.0.1-alpha15`）构建的第三方 Pixiv Android 客户端。全应用遵循纯 COUI 视觉与交互规范，不依赖 Material 3，提供插画、漫画、小说及 Pixivision 特辑的完整浏览、搜索、收藏与阅读体验。
 
-- **当前版本**：`0.1.1`（`versionCode = 11`）
+- **当前版本**：`0.1.2`（`versionCode = 15`）
 - **项目仓库**：[silorny/Huiguang-Pixiv](https://github.com/silorny/Huiguang-Pixiv)（Apache-2.0）
 - **应用包名**：`moe.huiguang.pixiv`
-- **支持系统**：Android 14 及以上（`minSdk = 34`，`compileSdk = 37`，`targetSdk = 37`）
+- **支持系统**：Android 14 及以上（`minSdk = 34`，`compileSdk = 37.1`，`targetSdk = 37`）
 - **UI 与构建基线**：Kotlin `2.4.20` + AGP `9.4.1` + Gradle `9.8.0` + Jetpack Compose BOM `2026.08.01`
 
 ---

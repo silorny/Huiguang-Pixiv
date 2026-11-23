@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -35,17 +34,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+import moe.huiguang.pixiv.design.shape.g2CornerMask
 
-private val CardOuterShape = CouiShape(20.dp, 3f)
-private val CardInnerShape = CouiShape(14.dp, 3f)
-private val BadgeShape = CouiShape(8.dp, 3f)
+private val CardOuterShape = CachedCouiShape(20.dp, 3f)
+private val CardInnerShape = CachedCouiShape(14.dp, 3f)
+private val BadgeShape = CachedCouiShape(8.dp, 3f)
 private val BadgeTextStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
 
 /**
@@ -75,8 +75,7 @@ fun ArtworkCard(
 
     Column(
         modifier = modifier
-            .clip(CardOuterShape)
-            .background(colors.card)
+            .background(colors.card, CardOuterShape)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -93,8 +92,8 @@ fun ArtworkCard(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio((1f / ratio).coerceIn(0.45f, 1.8f))
-                .clip(CardInnerShape)
-                .background(colors.background),
+                .background(colors.background)
+                .g2CornerMask(CardInnerShape, colors.card),
         ) {
             RetryableImage(
                 url = item.thumbUrl.ifBlank { item.fullUrl },
@@ -211,8 +210,7 @@ private fun CornerBadge(
     val stroke = if (adult) Color(0x40FFFFFF) else Color(0x2EFFFFFF)
     Box(
         modifier
-            .clip(BadgeShape)
-            .background(bg)
+            .background(bg, BadgeShape)
             .border(0.5.dp, stroke, BadgeShape)
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {

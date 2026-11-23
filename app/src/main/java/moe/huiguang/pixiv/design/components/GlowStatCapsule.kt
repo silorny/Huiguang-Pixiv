@@ -63,6 +63,7 @@ fun GlowStatCapsule(
         interactive = false,
         foregroundComposition = true,
         whiteGlass = true,
+        staticSurface = true,
     ) {
         Row(
             Modifier.fillMaxSize(),

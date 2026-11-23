@@ -60,7 +60,6 @@ import com.itos.coui.layout.Group
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
@@ -85,13 +84,14 @@ import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.UserCard
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 
 private val TagCardOuterRadius = 24.dp
 private val TagCardPadding = 12.dp
 private val TagCoverInnerRadius = 12.dp // Concentric: 24.dp outer radius - 12.dp padding == 12.dp
-private val TagCardShape = CouiShape(TagCardOuterRadius, 3f)
-private val TagCoverShape = CouiShape(TagCoverInnerRadius, 3f)
+private val TagCardShape = CachedCouiShape(TagCardOuterRadius, 3f)
+private val TagCoverShape = CachedCouiShape(TagCoverInnerRadius, 3f)
 
 /**
  * Search results: 全部 / 插画 / 漫画 / 小说 / 作者.
@@ -230,19 +230,19 @@ fun SearchResultsScreen(
             .fillMaxSize()
             .background(colors.background),
     ) {
+        // Flat opaque sibling source for GlowChip inside TagHeaderCard (avoids nesting inside backdrop).
+        Box(
+            Modifier
+                .fillMaxSize()
+                .couiBackdrop(surfaceBackdrop)
+                .background(colors.background),
+        )
         Box(
             Modifier
                 .fillMaxSize()
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            // Flat opaque sibling source for GlowChip inside TagHeaderCard (avoids render-graph cycle).
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .couiBackdrop(surfaceBackdrop)
-                    .background(colors.background),
-            )
             SlideSwitcher(
                 index = filter,
                 modifier = Modifier.fillMaxSize(),
@@ -375,7 +375,11 @@ fun SearchResultsScreen(
                                         }
                                     }
 
-                                    items(visible, key = { "${it.category}-${it.id}" }) { item ->
+                                    items(
+                                        items = visible,
+                                        key = { "${it.category}-${it.id}" },
+                                        contentType = { if (it.category == SearchCategory.NOVEL) "novel" else "artwork" },
+                                    ) { item ->
                                         ArtworkCard(
                                             item = item,
                                             revealR18 = settingsState.revealR18,

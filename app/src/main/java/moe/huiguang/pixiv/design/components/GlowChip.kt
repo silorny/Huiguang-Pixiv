@@ -21,10 +21,10 @@ import com.itos.coui.shape.CouiCapsuleShape
 /**
  * 32dp capsule chip with the full 凝光 effect set.
  *
- * The selected chip keeps the app's accent fill (the COUI `ChipTab` selected
- * state is a neutral glass, which would drop the blue the design asks for),
- * but gets the coloured floating material, caustic shadow, contour edge,
- * touch-follow light and press rebound.
+ * Restores `GlowSurface` (coloured FAB material, caustic shadow, contour edge,
+ * touch-follow spotlight and press rebound, plus `whiteGlass` when unselected
+ * over flat surfaces) and caches static chrome via [staticSurface] when seated
+ * on flat backgrounds.
  */
 @Composable
 fun GlowChip(
@@ -36,6 +36,7 @@ fun GlowChip(
     selected: Boolean = false,
     whiteGlass: Boolean = false,
     blurRadius: Float = 0f,
+    staticSurface: Boolean = true,
 ) {
     val colors = CouiPageDefaults.themeColors()
     val haptics = LocalHapticFeedback.current
@@ -55,6 +56,7 @@ fun GlowChip(
             onClick()
         },
         foregroundComposition = true,
+        staticSurface = staticSurface,
     ) {
         BasicText(
             text = text,

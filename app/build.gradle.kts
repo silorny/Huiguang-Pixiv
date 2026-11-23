@@ -39,14 +39,16 @@ val signingValues = if (hasSigningEnvironment || signingPropertiesFile.isFile) {
 
 android {
     namespace = "moe.huiguang.pixiv"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         applicationId = "moe.huiguang.pixiv"
         minSdk = 34
         targetSdk = 37
-        versionCode = 11
-        versionName = "0.1.1"
+        versionCode = 15
+        versionName = "0.1.2"
     }
 
     val releaseSigning = if (signingValues.isNotEmpty()) {

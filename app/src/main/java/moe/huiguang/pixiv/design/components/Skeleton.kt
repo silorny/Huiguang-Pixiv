@@ -17,13 +17,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.theme.CouiTheme
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+
+private val SkeletonCardOuterShape = CachedCouiShape(18.dp, 3f)
+private val SkeletonCardInnerShape = CachedCouiShape(14.dp, 3f)
+private val SkeletonDetailCoverShape = CachedCouiShape(20.dp, 3f)
+private val SkeletonThumbShape = CachedCouiShape(12.dp, 3f)
 
 /**
  * Lightweight grayscale waterfall skeleton using COUI `outlineVariant` per the
@@ -83,16 +87,14 @@ private fun SkeletonColumn(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(CouiShape(20.dp, 3f))
-                    .background(cardColor)
+                    .background(cardColor, SkeletonCardOuterShape)
                     .padding(6.dp),
             ) {
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .height(imageHeight)
-                        .clip(CouiShape(14.dp, 3f))
-                        .background(placeholderColor),
+                        .background(placeholderColor, SkeletonCardInnerShape),
                 )
                 Spacer(Modifier.height(8.dp))
                 Box(
@@ -100,8 +102,7 @@ private fun SkeletonColumn(
                         .fillMaxWidth(0.82f)
                         .height(14.dp)
                         .padding(horizontal = 4.dp)
-                        .clip(CouiCapsuleShape)
-                        .background(placeholderColor),
+                        .background(placeholderColor, CircleShape),
                 )
                 Spacer(Modifier.height(6.dp))
                 Box(
@@ -109,8 +110,7 @@ private fun SkeletonColumn(
                         .fillMaxWidth(0.48f)
                         .height(11.dp)
                         .padding(horizontal = 4.dp)
-                        .clip(CouiCapsuleShape)
-                        .background(placeholderColor),
+                        .background(placeholderColor, CircleShape),
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -137,32 +137,28 @@ fun DetailSkeleton(
             Modifier
                 .fillMaxWidth()
                 .height(300.dp)
-                .clip(CouiShape(20.dp, 3f))
-                .background(placeholder),
+                .background(placeholder, SkeletonDetailCoverShape),
         )
         Spacer(Modifier.height(16.dp))
         Box(
             Modifier
                 .fillMaxWidth(0.68f)
                 .height(20.dp)
-                .clip(CouiCapsuleShape)
-                .background(placeholder),
+                .background(placeholder, CircleShape),
         )
         Spacer(Modifier.height(8.dp))
         Box(
             Modifier
                 .fillMaxWidth(0.32f)
                 .height(13.dp)
-                .clip(CouiCapsuleShape)
-                .background(placeholder),
+                .background(placeholder, CircleShape),
         )
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .size(40.dp)
-                    .clip(CircleShape)
-                    .background(placeholder),
+                    .background(placeholder, CircleShape),
             )
             Spacer(Modifier.width(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -170,15 +166,13 @@ fun DetailSkeleton(
                     Modifier
                         .width(112.dp)
                         .height(14.dp)
-                        .clip(CouiCapsuleShape)
-                        .background(placeholder),
+                        .background(placeholder, CircleShape),
                 )
                 Box(
                     Modifier
                         .width(72.dp)
                         .height(11.dp)
-                        .clip(CouiCapsuleShape)
-                        .background(placeholder),
+                        .background(placeholder, CircleShape),
                 )
             }
         }
@@ -187,8 +181,7 @@ fun DetailSkeleton(
             Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .clip(CouiCapsuleShape)
-                .background(colors.card),
+                .background(colors.card, CouiCapsuleShape),
         )
     }
 }
@@ -216,16 +209,14 @@ fun WorkRowListSkeleton(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .clip(CouiShape(18.dp, 3f))
-                    .background(colors.card)
+                    .background(colors.card, SkeletonCardOuterShape)
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     Modifier
                         .size(64.dp)
-                        .clip(CouiShape(12.dp, 3f))
-                        .background(placeholder),
+                        .background(placeholder, SkeletonThumbShape),
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -233,22 +224,19 @@ fun WorkRowListSkeleton(
                         Modifier
                             .fillMaxWidth(0.76f)
                             .height(14.dp)
-                            .clip(CouiCapsuleShape)
-                            .background(placeholder),
+                            .background(placeholder, CircleShape),
                     )
                     Box(
                         Modifier
                             .fillMaxWidth(0.46f)
                             .height(11.dp)
-                            .clip(CouiCapsuleShape)
-                            .background(placeholder),
+                            .background(placeholder, CircleShape),
                     )
                     Box(
                         Modifier
                             .fillMaxWidth(0.32f)
                             .height(10.dp)
-                            .clip(CouiCapsuleShape)
-                            .background(placeholder),
+                            .background(placeholder, CircleShape),
                     )
                 }
             }

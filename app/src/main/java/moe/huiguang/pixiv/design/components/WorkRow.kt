@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -24,13 +23,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+import moe.huiguang.pixiv.design.shape.g2CornerMask
 
-private val WorkRowThumbShape = CouiShape(12.dp, 3f)
-internal val WorkRowCardShape = CouiShape(18.dp, 3f)
+private val WorkRowThumbShape = CachedCouiShape(12.dp, 3f)
+internal val WorkRowCardShape = CachedCouiShape(18.dp, 3f)
 
 /** Thumbnail row used by history, bookmarks and the series list. */
 @Composable
@@ -66,8 +66,7 @@ fun WorkRow(
     val container = if (surface) {
         Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(cardShape)
-            .background(colors.card)
+            .background(colors.card, cardShape)
             .then(clickModifier)
             .padding(10.dp)
     } else {
@@ -109,8 +108,7 @@ internal fun WorkRowBody(
             Box(
                 Modifier
                     .size(64.dp)
-                    .clip(thumbShape)
-                    .background(colors.background),
+                    .background(colors.background, thumbShape),
             )
         } else {
             RetryableImage(
@@ -119,8 +117,8 @@ internal fun WorkRowBody(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(64.dp)
-                    .clip(thumbShape)
-                    .background(colors.background),
+                    .background(colors.background)
+                    .g2CornerMask(thumbShape, colors.card),
             )
         }
         Spacer(Modifier.width(12.dp))

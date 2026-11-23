@@ -328,6 +328,7 @@ fun ImageViewerContent(
                         backdrop = effectBackdrop,
                         dark = dark,
                         blurRadius = 20f,
+                        staticSurface = true,
                     )
                     Spacer(Modifier.width(8.dp))
                     GlowSurface(
@@ -340,6 +341,7 @@ fun ImageViewerContent(
                         whiteGlass = true,
                         interactive = false,
                         foregroundComposition = true,
+                        staticSurface = true,
                     ) {
                         BasicText(
                             text = if (pages.isEmpty()) "" else "${currentPage + 1} / ${pages.size}",
@@ -372,6 +374,7 @@ fun ImageViewerContent(
                         backdrop = effectBackdrop,
                         dark = dark,
                         blurRadius = 20f,
+                        staticSurface = true,
                     )
                 }
             }
@@ -406,6 +409,7 @@ private fun ChromeButton(
         whiteGlass = true,
         onClick = onClick,
         foregroundComposition = true,
+        staticSurface = true,
     ) {
         content()
     }
@@ -508,6 +512,7 @@ private fun ZoomableImage(
             contentDescription = null,
             contentScale = ContentScale.Fit,
             darkPlaceholder = dark,
+            constrainToBounds = false,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(

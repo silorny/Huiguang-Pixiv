@@ -4,7 +4,12 @@ import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
+import coil3.size.Precision
+import okio.Path.Companion.toOkioPath
 import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.repo.EngagementRepository
@@ -65,6 +70,19 @@ class AppContainer(context: Context) {
         .components {
             add(OkHttpNetworkFetcherFactory(callFactory = { api.client }))
         }
+        .memoryCache {
+            MemoryCache.Builder()
+                .maxSizePercent(app, 0.25)
+                .build()
+        }
+        .diskCache {
+            DiskCache.Builder()
+                .directory(app.cacheDir.resolve("image_cache").toOkioPath())
+                .maxSizeBytes(256L * 1024 * 1024)
+                .build()
+        }
+        .precision(Precision.INEXACT)
+        .crossfade(false)
         .build()
 
     /** Drops in-memory/disk caches but keeps session, settings, history and favourites. */
