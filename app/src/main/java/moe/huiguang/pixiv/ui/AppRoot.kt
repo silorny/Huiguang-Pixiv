@@ -137,15 +137,29 @@ fun AppRoot(container: AppContainer) {
             snapSyncTick++
         }
         wasScrolling = activeScrollInProgress
+        if (activeScrollInProgress) {
+            while (true) {
+                kotlinx.coroutines.delay(22L)
+                snapController.forceNextCapture = true
+                snapSyncTick++
+            }
+        }
     }
     // Split pageBackdrop into small top & bottom strip offscreen layers (-66% FBO RAM/DDR vs 1272x2772).
     val topBackdrop = rememberCouiBackdrop {
-        drawLayer(snapLayer)
+        snapSyncTick
+        if (snapLayer.size.width > 0 && snapLayer.size.height > 0) {
+            drawLayer(snapLayer)
+        }
     }
     val bottomBackdrop = rememberCouiBackdrop {
-        val yOffset = size.height - snapLayer.size.height.toFloat()
-        translate(top = yOffset) {
-            drawLayer(snapLayer)
+        snapSyncTick
+        val layerH = snapLayer.size.height
+        if (snapLayer.size.width > 0 && layerH > 0) {
+            val yOffset = size.height - layerH.toFloat()
+            translate(top = yOffset) {
+                drawLayer(snapLayer)
+            }
         }
     }
     val flatEffectBackdrop = rememberCouiBackdrop()
@@ -235,7 +249,7 @@ fun AppRoot(container: AppContainer) {
                         cache = container.homeFeedCache,
                         tabState = homeTabState,
                         effectBackdrop = flatEffectBackdrop,
-                        refreshBackdrop = topBackdrop,
+                        refreshBackdrop = flatEffectBackdrop,
                         scrollToTopTick = scrollToTopTicks[0],
                         onOpenWork = { item -> open(Route.Detail(kindOf(item), item.id)) },
                         onOpenPixivision = { articleId -> open(Route.Pixivision(articleId)) },

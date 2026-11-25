@@ -248,11 +248,17 @@ fun GlowSurface(
                 val captureLayer = rememberGraphicsLayer()
                 if (staticKey != null) {
                     LaunchedEffect(staticKey) {
+                        // Wait for layout + draw of captureLayer and backdrop readiness;
+                        // never cache a blank/transparent bitmap if backdrop wasn't ready yet.
                         withFrameNanos { }
-                        val bmp = runCatching { captureLayer.toImageBitmap() }.getOrNull()
-                        if (bmp != null) {
-                            StaticGlowChromeCache.put(staticKey, bmp)
-                            capturedChrome = bmp
+                        repeat(6) {
+                            withFrameNanos { }
+                            val bmp = runCatching { captureLayer.toImageBitmap() }.getOrNull()
+                            if (bmp != null && hasVisibleChromePixels(bmp)) {
+                                StaticGlowChromeCache.put(staticKey, bmp)
+                                capturedChrome = bmp
+                                return@LaunchedEffect
+                            }
                         }
                     }
                 }
@@ -444,6 +450,17 @@ private object StaticGlowChromeCache {
     fun put(key: StaticGlowKey, bitmap: ImageBitmap) {
         cache.put(key, bitmap)
     }
+}
+
+private fun hasVisibleChromePixels(bitmap: ImageBitmap): Boolean {
+    if (bitmap.width <= 0 || bitmap.height <= 0) return false
+    val pixel = IntArray(1)
+    val cx = (bitmap.width / 2).coerceIn(0, bitmap.width - 1)
+    val cy = (bitmap.height / 2).coerceIn(0, bitmap.height - 1)
+    return runCatching {
+        bitmap.readPixels(pixel, startX = cx, startY = cy, width = 1, height = 1)
+        (pixel[0] ushr 24) != 0
+    }.getOrDefault(false)
 }
 
 /**

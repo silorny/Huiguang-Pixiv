@@ -14,6 +14,7 @@ sealed interface Route {
     // Secondary pages, each hosted by its own PageActivity.
     data object Login : Route
     data object Settings : Route
+    data object ShareFormat : Route
     data object History : Route
     data object Bookmarks : Route
     data object About : Route
@@ -54,6 +55,7 @@ object RouteCodec {
         Route.Profile -> "profile"
         Route.Login -> "login"
         Route.Settings -> "settings"
+        Route.ShareFormat -> "shareformat"
         Route.History -> "history"
         Route.Bookmarks -> "bookmarks"
         Route.About -> "about"
@@ -76,6 +78,7 @@ object RouteCodec {
             "profile" -> Route.Profile
             "login" -> Route.Login
             "settings" -> Route.Settings
+            "shareformat" -> Route.ShareFormat
             "history" -> Route.History
             "bookmarks" -> Route.Bookmarks
             "about" -> Route.About

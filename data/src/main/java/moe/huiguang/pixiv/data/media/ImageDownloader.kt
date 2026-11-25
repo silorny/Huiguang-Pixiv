@@ -2,7 +2,9 @@ package moe.huiguang.pixiv.data.media
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,15 +12,17 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.net.PixivException
+import java.net.URLDecoder
 
 /**
- * Saves artwork into the phone's public Downloads folder
- * (`/storage/emulated/0/Download/`).
- *
- * minSdk 34 means `MediaStore.Downloads` is always available, so no storage
- * permission and no legacy direct write path is needed.
+ * Saves artwork and exported novels into either the phone's public Downloads
+ * folder (`/storage/emulated/0/Download/`) via `MediaStore.Downloads`, or a
+ * user-chosen SAF directory tree (`downloadTreeUriProvider`).
  */
-class ImageDownloader(private val client: OkHttpClient = PixivApi().client) {
+class ImageDownloader(
+    private val client: OkHttpClient = PixivApi().client,
+    private val downloadTreeUriProvider: () -> String = { "" },
+) {
 
     /** @return the human-readable destination path. */
     suspend fun download(context: Context, url: String, fileName: String): String =
@@ -41,6 +45,10 @@ class ImageDownloader(private val client: OkHttpClient = PixivApi().client) {
         }
 
     private fun write(context: Context, fileName: String, mime: String, bytes: ByteArray): String {
+        val customTreeUri = downloadTreeUriProvider().trim()
+        if (customTreeUri.isNotEmpty()) {
+            return writeToTree(context, Uri.parse(customTreeUri), fileName, mime, bytes)
+        }
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -62,10 +70,56 @@ class ImageDownloader(private val client: OkHttpClient = PixivApi().client) {
             resolver.delete(uri, null, null)
             throw e
         }
-        return "${Environment.DIRECTORY_DOWNLOADS}/$fileName"
+        return "$DEFAULT_DOWNLOAD_PATH$fileName"
+    }
+
+    private fun writeToTree(
+        context: Context,
+        treeUri: Uri,
+        fileName: String,
+        mime: String,
+        bytes: ByteArray,
+    ): String {
+        val resolver = context.contentResolver
+        val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
+        val destUri = DocumentsContract.createDocument(resolver, parentDocUri, mime, fileName)
+            ?: throw PixivException("Could not create file in selected folder")
+        try {
+            resolver.openOutputStream(destUri)?.use { it.write(bytes) }
+                ?: throw PixivException("could not open the destination")
+        } catch (e: Exception) {
+            runCatching { DocumentsContract.deleteDocument(resolver, destUri) }
+            throw e
+        }
+        return "${formatTreeUriPath(treeUri.toString())}$fileName"
     }
 
     companion object {
+        const val DEFAULT_DOWNLOAD_PATH = "/storage/emulated/0/Download/"
+
+        internal fun decodeTreeDocumentId(uriString: String): String? {
+            if (uriString.isBlank()) return null
+            val raw = uriString.substringAfter("/tree/", "").substringBefore('/')
+            if (raw.isEmpty()) return null
+            return runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrNull()
+        }
+
+        fun isDefaultDownloadUri(uriString: String): Boolean {
+            val docId = decodeTreeDocumentId(uriString)?.trimEnd('/') ?: return false
+            return docId == "primary:Download" || docId == "downloads"
+        }
+
+        fun formatTreeUriPath(uriString: String): String {
+            if (uriString.isBlank() || isDefaultDownloadUri(uriString)) return DEFAULT_DOWNLOAD_PATH
+            val docId = decodeTreeDocumentId(uriString) ?: return uriString
+            if (docId.startsWith("primary:")) {
+                val sub = docId.removePrefix("primary:").trim('/')
+                return if (sub.isEmpty()) "/storage/emulated/0/" else "/storage/emulated/0/$sub/"
+            }
+            val cleaned = docId.replace(':', '/').trim('/')
+            return if (cleaned.isEmpty()) DEFAULT_DOWNLOAD_PATH else "$cleaned/"
+        }
 
         private fun mimeOf(fileName: String): String = when {
             fileName.endsWith(".png", true) -> "image/png"

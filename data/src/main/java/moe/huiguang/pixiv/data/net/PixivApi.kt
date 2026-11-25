@@ -11,6 +11,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -46,6 +48,7 @@ import moe.huiguang.pixiv.data.model.TagMetadata
 import moe.huiguang.pixiv.data.model.UserProfile
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.data.model.UserSearchResult
+import moe.huiguang.pixiv.data.model.uncropThumb
 import moe.huiguang.pixiv.data.model.parseSeriesNav
 import moe.huiguang.pixiv.data.model.uncropThumb
 import java.io.IOException
@@ -164,6 +167,13 @@ class PixivApi(
             }
             chain.proceed(builder.build())
         }
+        .dispatcher(
+            Dispatcher().apply {
+                maxRequests = 64
+                maxRequestsPerHost = 12
+            },
+        )
+        .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
         .connectTimeout(20, TimeUnit.SECONDS)
         // A heavily illustrated novel is a ~1 MB JSON response and an original
         // artwork can be several MB; a 20 s read window times those out.
@@ -692,31 +702,53 @@ class PixivApi(
      * to the `following` endpoint, so an empty list normally means "not signed
      * in" — the UI asks for a login rather than reporting a failure.
      */
-    suspend fun bookmarks(userId: String, limit: Int = 24, offset: Int = 0): List<BookmarkItem> {
-        val artworks = bookmarkPage("$baseUrl/ajax/user/$userId/illusts/bookmarks", limit, offset) { w ->
+    suspend fun bookmarks(
+        userId: String,
+        limit: Int = 24,
+        offset: Int = 0,
+        privateOnly: Boolean = false,
+    ): List<BookmarkItem> {
+        val rest = if (privateOnly) "hide" else "show"
+        val artworks = bookmarkPage("$baseUrl/ajax/user/$userId/illusts/bookmarks", limit, offset, rest) { w ->
+            val thumb = w.optString("url").ifEmpty { w.optString("thumbnailUrl") }
+            val xRestrict = w.optInt("xRestrict", 0)
             BookmarkItem(
                 id = w.optString("id"),
                 kind = HistoryEntry.KIND_ILLUST,
                 title = w.optString("title"),
-                thumbUrl = w.optString("url").ifEmpty { w.optString("thumbnailUrl") },
+                thumbUrl = thumb,
                 userName = w.optString("userName"),
                 pageCount = w.optInt("pageCount", 1),
                 textCount = 0,
-                isAdult = w.optInt("xRestrict", 0) > 0,
+                isAdult = xRestrict > 0,
                 illustType = w.optInt("illustType", 0),
+                userId = w.optString("userId"),
+                width = w.optInt("width", 0),
+                height = w.optInt("height", 0),
+                fullUrl = if (thumb.isNotEmpty()) uncropThumb(thumb) else "",
+                xRestrict = xRestrict,
+                tags = parseBookmarkTags(w.optJSONArray("tags")),
+                bookmarkId = w.optJSONObject("bookmarkData")?.optString("id").orEmpty(),
             )
         }
-        val novels = bookmarkPage("$baseUrl/ajax/user/$userId/novels/bookmarks", limit, offset) { w ->
+        val novels = bookmarkPage("$baseUrl/ajax/user/$userId/novels/bookmarks", limit, offset, rest) { w ->
+            val thumb = w.optString("url").ifEmpty { w.optString("thumbnailUrl") }
+            val xRestrict = w.optInt("xRestrict", 0)
             BookmarkItem(
                 id = w.optString("id"),
                 kind = HistoryEntry.KIND_NOVEL,
                 title = w.optString("title"),
-                thumbUrl = w.optString("url").ifEmpty { w.optString("thumbnailUrl") },
+                thumbUrl = thumb,
                 userName = w.optString("userName"),
                 pageCount = 1,
                 textCount = w.optInt("textCount"),
-                isAdult = w.optInt("xRestrict", 0) > 0,
+                isAdult = xRestrict > 0,
                 illustType = -1,
+                userId = w.optString("userId"),
+                fullUrl = thumb,
+                xRestrict = xRestrict,
+                tags = parseBookmarkTags(w.optJSONArray("tags")),
+                bookmarkId = w.optJSONObject("bookmarkData")?.optString("id").orEmpty(),
             )
         }
         return artworks + novels
@@ -868,6 +900,45 @@ class PixivApi(
         return !json.optBoolean("error", true)
     }
 
+    /**
+     * Switches an existing bookmark's privacy between public and private via
+     * `/ajax/{illusts|novels}/bookmarks/edit_restrict`.
+     */
+    suspend fun setBookmarkVisibility(
+        id: String,
+        novel: Boolean = false,
+        bookmarkId: String? = null,
+        makePrivate: Boolean,
+        userId: String? = null,
+    ): Boolean {
+        val resolvedId = bookmarkId?.takeIf { it.isNotEmpty() } ?: run {
+            if (novel) novel(id)?.bookmarkId else illust(id)?.bookmarkId
+        } ?: return false
+        val url = if (novel) {
+            "$baseUrl/ajax/novels/bookmarks/edit_restrict"
+        } else {
+            "$baseUrl/ajax/illusts/bookmarks/edit_restrict"
+        }
+        val referer = if (!userId.isNullOrEmpty()) {
+            val section = if (novel) "novels" else "artworks"
+            "$baseUrl/users/$userId/bookmarks/$section"
+        } else {
+            if (novel) "$baseUrl/novel/show.php?id=$id" else "$baseUrl/artworks/$id"
+        }
+        val payload = JSONObject().apply {
+            put("bookmarkIds", JSONArray().put(resolvedId))
+            put("bookmarkRestrict", if (makePrivate) "private" else "public")
+        }.toString()
+        val (code, body) = postWithCsrf(url, referer = referer) {
+            payload.toRequestBody("application/json; charset=utf-8".toMediaType())
+        }
+        logApi("setBookmarkVisibility(novel=$novel, id=$id, bid=$resolvedId, private=$makePrivate) -> HTTP $code body=${body.take(200)}")
+        if (code == 429) throw PixivException("HTTP 429", 429)
+        if (code !in 200..299) return false
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return false
+        return !json.optBoolean("error", true)
+    }
+
     private suspend fun postWithCsrf(
         url: String,
         referer: String = REFERER,
@@ -941,9 +1012,10 @@ class PixivApi(
         base: String,
         limit: Int,
         offset: Int,
+        rest: String,
         map: (JSONObject) -> BookmarkItem,
     ): List<BookmarkItem> {
-        val (code, body) = getJson("$base?tag=&offset=$offset&limit=$limit&rest=show&lang=ja")
+        val (code, body) = getJson("$base?tag=&offset=$offset&limit=$limit&rest=$rest&lang=ja")
         if (code != 200) return emptyList()
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
@@ -953,6 +1025,15 @@ class PixivApi(
                 val work = works.optJSONObject(i) ?: continue
                 val item = map(work)
                 if (item.id.isNotEmpty()) add(item)
+            }
+        }
+    }
+
+    private fun parseBookmarkTags(array: JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                array.optString(i).takeIf { it.isNotEmpty() }?.let(::add)
             }
         }
     }
@@ -973,6 +1054,7 @@ class PixivApi(
             id = b.optString("userId", id),
             name = name,
             avatarUrl = b.optString("imageBig").ifEmpty { b.optString("image") },
+            backgroundUrl = b.optJSONObject("background")?.optString("url").orEmpty(),
             comment = b.optString("comment"),
             following = b.optInt("following"),
             mypixivCount = b.optInt("mypixivCount"),
@@ -981,6 +1063,14 @@ class PixivApi(
             isFollowed = b.optBoolean("isFollowed", false),
         )
     }
+
+    /** Newest-first ids of a user's illustrations (`body.illusts`). */
+    suspend fun userIllustIds(id: String): List<String> =
+        profileIds(id, listOf("illusts"))
+
+    /** Newest-first ids of a user's manga works (`body.manga`). */
+    suspend fun userMangaIds(id: String): List<String> =
+        profileIds(id, listOf("manga"))
 
     /**
      * Newest-first ids of a user's works. `/profile/all` only returns ids, so the
@@ -1058,6 +1148,82 @@ class PixivApi(
                         } catch (e: CancellationException) {
                             // Never swallow cancellation: a newer keystroke
                             // relies on this coroutine actually stopping.
+                            throw e
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
+
+    /**
+     * Batch-loads a page of the user's illustrations or manga starting at [offset]
+     * via `/ajax/user/{id}/profile/illusts`, avoiding N+1 `/ajax/illust/{id}` calls
+     * and keeping illusts and manga strictly separated by category.
+     */
+    suspend fun userArtworkItemsPage(
+        id: String,
+        category: SearchCategory,
+        offset: Int,
+        limit: Int = 18,
+    ): List<SearchItem> {
+        val ids = when (category) {
+            SearchCategory.MANGA -> userMangaIds(id)
+            else -> userIllustIds(id)
+        }.drop(offset).take(limit)
+        if (ids.isEmpty()) return emptyList()
+        val workCategory = if (category == SearchCategory.MANGA) "manga" else "illust"
+        val query = ids.joinToString("") { "&ids%5B%5D=$it" }
+        val (code, body) = getJson(
+            "$baseUrl/ajax/user/$id/profile/illusts?is_first_page=0&work_category=$workCategory&lang=zh$query",
+        )
+        if (code == 404) return emptyList()
+        if (code == 200) {
+            val json = JSONObject(body)
+            if (!json.optBoolean("error")) {
+                val works = json.optJSONObject("body")?.optJSONObject("works")
+                if (works != null) {
+                    return ids.mapNotNull { workId ->
+                        works.optJSONObject(workId)?.let(::parseThumbIllust)?.let { item ->
+                            if (category == SearchCategory.MANGA) item.copy(category = SearchCategory.MANGA) else item
+                        }
+                    }
+                }
+            }
+            return emptyList()
+        }
+        // Fall back to per-work hydration only if the batch endpoint itself failed.
+        val gate = Semaphore(4)
+        return coroutineScope {
+            ids.map { workId ->
+                async(Dispatchers.IO) {
+                    gate.withPermit {
+                        try {
+                            illust(workId)?.let { d ->
+                                SearchItem(
+                                    id = d.id,
+                                    category = if (category == SearchCategory.MANGA || d.illustType == 1) {
+                                        SearchCategory.MANGA
+                                    } else {
+                                        SearchCategory.ILLUST
+                                    },
+                                    title = d.title,
+                                    thumbUrl = d.thumbUrl,
+                                    fullUrl = d.previewUrl,
+                                    userId = d.userId,
+                                    userName = d.userName,
+                                    xRestrict = d.xRestrict,
+                                    width = d.width,
+                                    height = d.height,
+                                    pageCount = d.pageCount,
+                                    textCount = 0,
+                                    tags = d.tags,
+                                    seriesTitle = d.series?.title,
+                                )
+                            }
+                        } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             null

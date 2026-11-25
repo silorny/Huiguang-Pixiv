@@ -19,7 +19,35 @@ data class BookmarkItem(
     val isAdult: Boolean,
     /** 0 = illustration, 1 = manga, 2 = ugoira; novels use -1. */
     val illustType: Int = 0,
-)
+    val userId: String = "",
+    val width: Int = 0,
+    val height: Int = 0,
+    val fullUrl: String = "",
+    val xRestrict: Int = if (isAdult) 1 else 0,
+    val tags: List<String> = emptyList(),
+    val bookmarkId: String = "",
+) {
+    fun toSearchItem(): SearchItem = SearchItem(
+        id = id,
+        category = when {
+            kind == HistoryEntry.KIND_NOVEL -> SearchCategory.NOVEL
+            illustType == 1 -> SearchCategory.MANGA
+            else -> SearchCategory.ILLUST
+        },
+        title = title,
+        thumbUrl = thumbUrl,
+        fullUrl = fullUrl.ifEmpty { thumbUrl },
+        userId = userId,
+        userName = userName,
+        xRestrict = xRestrict,
+        width = width,
+        height = height,
+        pageCount = pageCount,
+        textCount = textCount,
+        tags = tags,
+        seriesTitle = null,
+    )
+}
 
 /** Where the reader left off in one novel (or an explicit bookmark). */
 data class ReadingMark(

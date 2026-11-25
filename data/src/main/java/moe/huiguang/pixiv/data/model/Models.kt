@@ -40,6 +40,7 @@ data class UserProfile(
     val id: String,
     val name: String,
     val avatarUrl: String,
+    val backgroundUrl: String = "",
     val comment: String,
     val following: Int,
     val mypixivCount: Int,

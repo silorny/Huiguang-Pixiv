@@ -1,7 +1,6 @@
 package moe.huiguang.pixiv.design.components
 
 import android.graphics.BlendMode as AndroidBlendMode
-import android.os.Build
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -40,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -48,10 +46,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -78,13 +74,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.effect.CouiContour
-import com.itos.coui.effect.CouiContourStyle
 import com.itos.coui.effect.CouiFloatingMaterial
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.CouiFloatingShadow
 import com.itos.coui.effect.CouiFloatingSurface
 import com.itos.coui.effect.LocalCouiContourGlowEnabled
+import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.effect.couiFabFeedback
 import com.itos.coui.effect.couiFloatingPair
 import com.itos.coui.floatingactionbutton.CouiFabDefaults
@@ -98,6 +93,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
+import moe.huiguang.pixiv.design.shape.g2CornerMask
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -192,14 +188,56 @@ fun SwipeDeleteRow(
     minHeight: Dp = 64.dp,
     content: @Composable () -> Unit,
 ) {
+    val dark = CouiTheme.isDark
+    val destructiveColor = if (dark) CouiColor.Night.RED else CouiColor.Day.RED
+    SwipeActionRow(
+        rowKey = rowKey,
+        controller = controller,
+        backdrop = backdrop,
+        actionColor = destructiveColor,
+        actionLabel = stringResource(R.string.history_delete),
+        confirmActionLabel = stringResource(R.string.history_confirm_delete),
+        onClick = onClick,
+        onCommit = onDelete,
+        modifier = modifier,
+        minHeight = minHeight,
+        actionIcon = { committed, confirmation ->
+            DeleteActionIcon(
+                modifier = Modifier.size(DeleteIconSize),
+                confirmation = confirmation,
+                committed = committed,
+                color = Color.White,
+            )
+        },
+        content = content,
+    )
+}
+
+/**
+ * Generalized swipe-reveal card container with COUI's floating-pair metaball
+ * emergence, stretch-to-commit gesture, and customizable trailing action FAB.
+ */
+@Composable
+fun SwipeActionRow(
+    rowKey: Any,
+    controller: SwipeRevealController,
+    backdrop: CouiBackdrop,
+    actionColor: Color,
+    actionLabel: String,
+    confirmActionLabel: String,
+    onClick: () -> Unit,
+    onCommit: () -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = 64.dp,
+    actionIcon: @Composable (committed: Boolean, confirmation: Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
     val density = LocalDensity.current
     val dark = CouiTheme.isDark
-    val colors = CouiPageDefaults.themeColors()
-    val destructiveColor = if (dark) CouiColor.Night.RED else CouiColor.Day.RED
     val contour = LocalCouiContourGlowEnabled.current
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
-    val latestOnDelete by rememberUpdatedState(onDelete)
+    val latestOnCommit by rememberUpdatedState(onCommit)
     val isOpen = controller.openKey == rowKey
 
     val collapseHeight = remember { Animatable(1f) }
@@ -224,7 +262,7 @@ fun SwipeDeleteRow(
     ) {
         SwipeRevealSurface(
             backdrop = backdrop,
-            destructiveColor = destructiveColor,
+            destructiveColor = actionColor,
             dark = dark,
             contourGlowEnabled = contour,
             isOpen = isOpen,
@@ -238,13 +276,11 @@ fun SwipeDeleteRow(
                 controller.setOpen(rowKey, false)
                 scope.launch {
                     collapseHeight.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
-                    latestOnDelete()
+                    latestOnCommit()
                 }
             },
-            endActionContent = { committed, confirmation, interactive, requestDelete ->
-                val label = stringResource(
-                    if (confirmation) R.string.history_confirm_delete else R.string.history_delete,
-                )
+            endActionContent = { committed, confirmation, interactive, requestAction ->
+                val label = if (confirmation) confirmActionLabel else actionLabel
                 val fabInteraction = remember { MutableInteractionSource() }
                 Box(
                     Modifier
@@ -261,7 +297,7 @@ fun SwipeDeleteRow(
                                         onClickLabel = label,
                                         onClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            requestDelete()
+                                            requestAction()
                                         },
                                     )
                             } else {
@@ -270,12 +306,14 @@ fun SwipeDeleteRow(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    DeleteActionIcon(
-                        modifier = Modifier.size(DeleteIconSize),
-                        confirmation = confirmation,
-                        committed = committed,
-                        color = Color.White,
-                    )
+                    if (confirmation) {
+                        SwipeConfirmCheckIcon(
+                            modifier = Modifier.size(DeleteIconSize),
+                            color = Color.White,
+                        )
+                    } else {
+                        actionIcon(committed, false)
+                    }
                 }
             },
             content = content,
@@ -507,41 +545,16 @@ private fun SwipeRevealSurface(
         val fullContentWidthPx = with(density) { fullContentWidth.roundToPx() }
 
         if (!swipeActive) {
-            val idleBackgroundModifier =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && contourGlowEnabled) {
-                    remember(colors.card, dark) {
-                        val contour = CouiContour(style = CouiContourStyle.Button)
-                        Modifier.drawWithCache {
-                            if (size.minDimension <= 0f) {
-                                onDrawBehind { }
-                            } else {
-                                val outline = WorkRowCardShape.createOutline(size, layoutDirection, this)
-                                val brush = ShaderBrush(
-                                    contour.shader(
-                                        size = size,
-                                        density = density.density,
-                                        radiusPx = cardCornerRadiusPx,
-                                        cornerWeight = 3f,
-                                        surfaceColor = colors.card,
-                                        innerGlowAlpha = if (dark) 0.05f else 0.07f,
-                                        lineAlpha = if (dark) 0.24f else 0.14f,
-                                        effectAlpha = 1f,
-                                    ),
-                                )
-                                onDrawBehind { drawOutline(outline, brush) }
-                            }
-                        }
-                    }
-                } else {
-                    Modifier.background(colors.card, WorkRowCardShape)
-                }
+            val idleInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
-                    .then(idleBackgroundModifier)
+                    .background(colors.card, WorkRowCardShape)
+                    .g2CornerMask(WorkRowCardShape, colors.background)
+                    .couiButtonFeedback(dark, idleInteraction, enabled = !deleteAnimating, list = true)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = idleInteraction,
                         indication = null,
                         enabled = !deleteAnimating,
                         onClickLabel = stringResource(R.string.history_view_details),
@@ -872,6 +885,26 @@ private fun ShiftedFixedWidthContent(
 }
 
 @Composable
+private fun SwipeConfirmCheckIcon(
+    modifier: Modifier,
+    color: Color,
+) {
+    Canvas(modifier) {
+        val strokeWidth = size.minDimension * 0.095f
+        val checkPath = Path().apply {
+            moveTo(size.width * 0.22f, size.height * 0.52f)
+            lineTo(size.width * 0.42f, size.height * 0.72f)
+            lineTo(size.width * 0.78f, size.height * 0.30f)
+        }
+        drawPath(
+            path = checkPath,
+            color = color,
+            style = Stroke(width = strokeWidth * 1.15f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+@Composable
 private fun DeleteActionIcon(
     modifier: Modifier,
     confirmation: Boolean,
@@ -883,65 +916,56 @@ private fun DeleteActionIcon(
         animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "swipe_trash_lid_rotation",
     )
+    if (confirmation) {
+        SwipeConfirmCheckIcon(modifier = modifier, color = color)
+        return
+    }
     Canvas(modifier) {
         val strokeWidth = size.minDimension * 0.095f
-        if (confirmation) {
-            val checkPath = Path().apply {
-                moveTo(size.width * 0.22f, size.height * 0.52f)
-                lineTo(size.width * 0.42f, size.height * 0.72f)
-                lineTo(size.width * 0.78f, size.height * 0.30f)
-            }
-            drawPath(
-                path = checkPath,
-                color = color,
-                style = Stroke(width = strokeWidth * 1.15f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        } else {
-            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-            val bodyLeft = size.width * 0.26f
-            val bodyTop = size.height * 0.38f
-            val bodyWidth = size.width * 0.48f
-            val bodyHeight = size.height * 0.42f
-            val lidY = size.height * 0.28f
-            val lidStart = Offset(size.width * 0.22f, lidY)
-            val lidWidth = size.width * 0.56f
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(bodyLeft, bodyTop),
-                size = Size(bodyWidth, bodyHeight),
-                cornerRadius = CornerRadius(size.minDimension * 0.06f),
-                style = stroke,
-            )
+        val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        val bodyLeft = size.width * 0.26f
+        val bodyTop = size.height * 0.38f
+        val bodyWidth = size.width * 0.48f
+        val bodyHeight = size.height * 0.42f
+        val lidY = size.height * 0.28f
+        val lidStart = Offset(size.width * 0.22f, lidY)
+        val lidWidth = size.width * 0.56f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(bodyLeft, bodyTop),
+            size = Size(bodyWidth, bodyHeight),
+            cornerRadius = CornerRadius(size.minDimension * 0.06f),
+            style = stroke,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.41f, bodyTop + size.height * 0.08f),
+            end = Offset(size.width * 0.41f, bodyTop + bodyHeight - size.height * 0.08f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.59f, bodyTop + size.height * 0.08f),
+            end = Offset(size.width * 0.59f, bodyTop + bodyHeight - size.height * 0.08f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        rotate(degrees = lidRotation, pivot = lidStart) {
             drawLine(
                 color = color,
-                start = Offset(size.width * 0.41f, bodyTop + size.height * 0.08f),
-                end = Offset(size.width * 0.41f, bodyTop + bodyHeight - size.height * 0.08f),
+                start = lidStart,
+                end = Offset(lidStart.x + lidWidth, lidStart.y),
                 strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
             drawLine(
                 color = color,
-                start = Offset(size.width * 0.59f, bodyTop + size.height * 0.08f),
-                end = Offset(size.width * 0.59f, bodyTop + bodyHeight - size.height * 0.08f),
+                start = Offset(size.width * 0.43f, lidY - size.height * 0.08f),
+                end = Offset(size.width * 0.57f, lidY - size.height * 0.08f),
                 strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
-            rotate(degrees = lidRotation, pivot = lidStart) {
-                drawLine(
-                    color = color,
-                    start = lidStart,
-                    end = Offset(lidStart.x + lidWidth, lidStart.y),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    color = color,
-                    start = Offset(size.width * 0.43f, lidY - size.height * 0.08f),
-                    end = Offset(size.width * 0.57f, lidY - size.height * 0.08f),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-            }
         }
     }
 }

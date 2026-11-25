@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -52,12 +53,14 @@ fun UserCard(
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
+    val opaqueCardColor = colors.card.compositeOver(colors.background)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .background(colors.card, UserCardShape)
+            .g2CornerMask(UserCardShape, colors.background)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -136,7 +139,7 @@ fun UserCard(
                             .weight(1f)
                             .aspectRatio(1f)
                             .background(colors.background)
-                            .g2CornerMask(UserPreviewThumbShape, colors.card),
+                            .g2CornerMask(UserPreviewThumbShape, opaqueCardColor),
                     )
                 }
                 repeat(3 - user.recentWorks.take(3).size) {

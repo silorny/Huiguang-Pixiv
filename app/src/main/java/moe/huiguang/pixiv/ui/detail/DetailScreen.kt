@@ -90,6 +90,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.model.IllustDetail
 import moe.huiguang.pixiv.data.model.IllustPage
+import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.repo.EngagementEvent
 import moe.huiguang.pixiv.data.repo.EngagementKind
@@ -110,6 +111,7 @@ import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.ui.common.IntroCard
 import moe.huiguang.pixiv.ui.common.LinkedWorksSection
 import moe.huiguang.pixiv.ui.common.SeriesSection
+import moe.huiguang.pixiv.ui.common.WorkMetaHeader
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -415,17 +417,13 @@ fun DetailScreen(
 
                         Spacer(Modifier.height(14.dp))
                         Column(Modifier.padding(horizontal = 20.dp)) {
-                            // 1. work type + PID
-                            Text(
-                                text = stringResource(
-                                    R.string.detail_type_pid,
-                                    typeLabel(current.illustType),
-                                    current.id,
-                                ),
-                                kind = CouiTextKind.ItemSummary,
-                                color = colors.summary,
+                            // 1. work type + PID + publish date
+                            WorkMetaHeader(
+                                typeLabel = typeLabel(current.illustType),
+                                id = current.id,
+                                createDate = current.createDate,
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(8.dp))
 
                             // 2. title
                             BasicText(
@@ -518,6 +516,17 @@ fun DetailScreen(
                     }
                 }
 
+                val workUrl = PixivApi.PAGE_URL + current.id
+                val shareText = ShareFormatter.formatWork(
+                    template = settingsState.workShareFormat,
+                    title = current.title,
+                    userName = current.userName,
+                    userId = current.userId,
+                    illustId = current.id,
+                    url = workUrl,
+                    tags = current.tags,
+                    fallbackTemplate = stringResource(R.string.share_format_default_work),
+                )
                 DetailTopBar(
                     backdrop = backdrop,
                     effectDark = effectDark,
@@ -529,13 +538,20 @@ fun DetailScreen(
                     onDownload = { downloadAll() },
                     onOpenBrowser = {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(PixivApi.PAGE_URL + current.id)),
+                            Intent(Intent.ACTION_VIEW, Uri.parse(workUrl)),
                         )
                     },
                     onCopyLink = {
                         val cm = context.getSystemService(ClipboardManager::class.java)
-                        cm?.setPrimaryClip(ClipData.newPlainText("pixiv", PixivApi.PAGE_URL + current.id))
+                        cm?.setPrimaryClip(ClipData.newPlainText("pixiv", shareText))
                         Toast.makeText(context, resources.getString(R.string.detail_link_copied), Toast.LENGTH_SHORT).show()
+                    },
+                    onShare = {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(send, null))
                     },
                 )
 
@@ -604,6 +620,7 @@ private fun DetailTopBar(
     onDownload: () -> Unit,
     onOpenBrowser: () -> Unit,
     onCopyLink: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val barColors = com.itos.coui.topappbar.CouiTopAppBarDefaults.colors(
         dark = com.itos.coui.theme.CouiTheme.isDark,
@@ -671,6 +688,7 @@ private fun DetailTopBar(
                         CouiMenuItem(value = 1, text = stringResource(R.string.detail_action_download)),
                         CouiMenuItem(value = 2, text = stringResource(R.string.detail_open_browser)),
                         CouiMenuItem(value = 3, text = stringResource(R.string.detail_copy_link)),
+                        CouiMenuItem(value = 4, text = stringResource(R.string.detail_action_share)),
                     ),
                     onItemClick = { item ->
                         menuExpanded = false
@@ -679,6 +697,7 @@ private fun DetailTopBar(
                             1 -> onDownload()
                             2 -> onOpenBrowser()
                             3 -> onCopyLink()
+                            4 -> onShare()
                         }
                     },
                 )

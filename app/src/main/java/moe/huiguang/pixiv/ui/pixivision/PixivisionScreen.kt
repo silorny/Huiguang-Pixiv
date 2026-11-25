@@ -88,6 +88,7 @@ import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.TagChip
+import moe.huiguang.pixiv.ui.common.CategoryBadge
 import moe.huiguang.pixiv.ui.common.IntroCard
 
 private sealed interface PixivisionUiState {
@@ -269,23 +270,7 @@ fun PixivisionScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     if (detail.category.isNotEmpty()) {
-                                        Box(
-                                            Modifier
-                                                .background(
-                                                    colors.accent.copy(alpha = 0.12f),
-                                                    CouiShape(10.dp, 3f),
-                                                )
-                                                .padding(horizontal = 10.dp, vertical = 4.dp),
-                                        ) {
-                                            BasicText(
-                                                text = detail.category,
-                                                style = TextStyle(
-                                                    color = colors.accent,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                ),
-                                            )
-                                        }
+                                        CategoryBadge(text = detail.category, accent = colors.accent)
                                     } else {
                                         Spacer(Modifier.width(1.dp))
                                     }

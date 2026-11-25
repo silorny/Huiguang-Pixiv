@@ -84,6 +84,13 @@ class FavoriteStore(private val store: KeyValueStore) {
         persist(_items.value.filterNot { it.id == id })
     }
 
+    fun clear() {
+        store.remove(KEY)
+        store.remove(KEY_FOLLOWED)
+        _items.value = emptyList()
+        _followedAuthors.value = emptySet()
+    }
+
     private fun persist(items: List<FavoriteEntry>) {
         val array = JSONArray()
         items.forEach { item ->

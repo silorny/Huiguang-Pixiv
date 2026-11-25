@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,9 +55,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -80,9 +87,9 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.TopAppBarSurface
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
-import moe.huiguang.pixiv.data.model.IllustDetail
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
+import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.model.UserProfile
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.repo.EngagementEvent
@@ -96,6 +103,9 @@ import moe.huiguang.pixiv.design.components.GlowStatCapsule
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+import moe.huiguang.pixiv.design.shape.g2CornerMask
+import moe.huiguang.pixiv.ui.common.CategoryBadge
 import moe.huiguang.pixiv.ui.common.IntroCard
 
 /** Author page: profile header, category switch and paged works waterfall. */
@@ -118,9 +128,12 @@ fun AuthorScreen(
     var profile by remember(userId) { mutableStateOf<UserProfile?>(null) }
     val isFollowed = followedAuthors[userId] ?: (profile?.isFollowed == true)
     var resumeTick by remember { mutableIntStateOf(0) }
-    var works by remember(userId) { mutableStateOf<List<IllustDetail>>(emptyList()) }
-    var worksEnded by remember(userId) { mutableStateOf(false) }
-    var loadingWorks by remember(userId) { mutableStateOf(false) }
+    var illusts by remember(userId) { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var illustsEnded by remember(userId) { mutableStateOf(false) }
+    var loadingIllusts by remember(userId) { mutableStateOf(false) }
+    var mangas by remember(userId) { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var mangasEnded by remember(userId) { mutableStateOf(false) }
+    var loadingMangas by remember(userId) { mutableStateOf(false) }
     var novels by remember(userId) { mutableStateOf<List<SearchItem>>(emptyList()) }
     var novelsEnded by remember(userId) { mutableStateOf(false) }
     var loadingNovels by remember(userId) { mutableStateOf(false) }
@@ -137,28 +150,45 @@ fun AuthorScreen(
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val collapseDistancePx = with(density) { 64.dp.toPx() }
-    val collapseProgress by remember(activeGridState, collapseDistancePx) {
+    val collapseLeadPx = with(density) { 40.dp.toPx() }
+    var nameRowTopPx by remember(userId) { mutableFloatStateOf(0f) }
+    val collapseProgress by remember(activeGridState, collapseDistancePx, collapseLeadPx) {
         derivedStateOf {
             if (activeGridState.firstVisibleItemIndex > 0) {
                 1f
             } else {
-                (activeGridState.firstVisibleItemScrollOffset / collapseDistancePx).coerceIn(0f, 1f)
+                val startPx = (nameRowTopPx - collapseLeadPx).coerceAtLeast(0f)
+                ((activeGridState.firstVisibleItemScrollOffset - startPx) / collapseDistancePx).coerceIn(0f, 1f)
             }
         }
     }
 
-    suspend fun loadMoreWorks() {
-        if (loadingWorks || worksEnded) return
-        loadingWorks = true
-        runCatching { api.userWorksPage(userId, offset = works.size, limit = 18) }
+    suspend fun loadMoreIllusts() {
+        if (loadingIllusts || illustsEnded) return
+        loadingIllusts = true
+        runCatching { api.userArtworkItemsPage(userId, SearchCategory.ILLUST, offset = illusts.size, limit = 18) }
             .onSuccess { page ->
-                val known = works.mapTo(HashSet()) { it.id }
+                val known = illusts.mapTo(HashSet()) { it.id }
                 val fresh = page.filter { it.id !in known }
-                works = works + fresh
-                if (page.size < 18 || fresh.isEmpty()) worksEnded = true
+                illusts = illusts + fresh
+                if (page.size < 18 || fresh.isEmpty()) illustsEnded = true
             }
-            .onFailure { if (works.isEmpty()) worksEnded = true }
-        loadingWorks = false
+            .onFailure { if (illusts.isEmpty()) illustsEnded = true }
+        loadingIllusts = false
+    }
+
+    suspend fun loadMoreMangas() {
+        if (loadingMangas || mangasEnded) return
+        loadingMangas = true
+        runCatching { api.userArtworkItemsPage(userId, SearchCategory.MANGA, offset = mangas.size, limit = 18) }
+            .onSuccess { page ->
+                val known = mangas.mapTo(HashSet()) { it.id }
+                val fresh = page.filter { it.id !in known }
+                mangas = mangas + fresh
+                if (page.size < 18 || fresh.isEmpty()) mangasEnded = true
+            }
+            .onFailure { if (mangas.isEmpty()) mangasEnded = true }
+        loadingMangas = false
     }
 
     suspend fun loadMoreNovels() {
@@ -214,7 +244,7 @@ fun AuthorScreen(
         } else {
             error = resources.getString(R.string.error_author_load_failed)
         }
-        loadMoreWorks()
+        loadMoreIllusts()
     }
 
     LaunchedEffect(userId, resumeTick) {
@@ -222,6 +252,10 @@ fun AuthorScreen(
         val loaded = runCatching { api.user(userId) }.getOrNull() ?: return@LaunchedEffect
         profile = loaded
         engagement.syncFollow(userId, loaded.isFollowed)
+    }
+
+    LaunchedEffect(userId) {
+        loadMoreMangas()
     }
 
     LaunchedEffect(userId) {
@@ -262,6 +296,7 @@ fun AuthorScreen(
             ) {
                 item(span = StaggeredGridItemSpan.FullLine, key = "header") {
                     ProfileHeader(
+                        userId = userId,
                         profile = profile,
                         error = error,
                         isFollowed = isFollowed,
@@ -279,6 +314,7 @@ fun AuthorScreen(
                         backdrop = effectBackdrop,
                         dark = effectDark,
                         collapseProgress = { collapseProgress },
+                        onNameRowPositioned = { nameRowTopPx = it },
                     )
                 }
                 item(span = StaggeredGridItemSpan.FullLine, key = "filter") {
@@ -297,13 +333,20 @@ fun AuthorScreen(
                 }
 
                 val visibleWorks: List<SearchItem> = when (filter) {
-                    1 -> works.filter { it.illustType == 1 }.map { it.toSearchItem() }
+                    1 -> mangas
                     2 -> novels
-                    else -> works.filter { it.illustType != 1 }.map { it.toSearchItem() }
+                    else -> illusts
                 }
-                val isNovelTab = filter == 2
-                val isLoading = if (isNovelTab) loadingNovels else loadingWorks
-                val isEnded = if (isNovelTab) novelsEnded else worksEnded
+                val isLoading = when (filter) {
+                    1 -> loadingMangas
+                    2 -> loadingNovels
+                    else -> loadingIllusts
+                }
+                val isEnded = when (filter) {
+                    1 -> mangasEnded
+                    2 -> novelsEnded
+                    else -> illustsEnded
+                }
 
                 if (visibleWorks.isEmpty() && !isLoading) {
                     item(span = StaggeredGridItemSpan.FullLine, key = "empty") {
@@ -332,10 +375,14 @@ fun AuthorScreen(
                 }
 
                 item(span = StaggeredGridItemSpan.FullLine, key = "author-footer-$filter") {
-                    LaunchedEffect(filter, works.size, novels.size, isEnded) {
+                    LaunchedEffect(filter, illusts.size, mangas.size, novels.size, isEnded) {
                         if (!isEnded) {
                             scope.launch {
-                                if (isNovelTab) loadMoreNovels() else loadMoreWorks()
+                                when (filter) {
+                                    1 -> loadMoreMangas()
+                                    2 -> loadMoreNovels()
+                                    else -> loadMoreIllusts()
+                                }
                             }
                         }
                     }
@@ -360,6 +407,13 @@ fun AuthorScreen(
         }
 
         val authorUrl = "https://www.pixiv.net/users/$userId"
+        val shareText = ShareFormatter.formatAuthor(
+            template = settingsState.authorShareFormat,
+            userName = profile?.name?.takeIf { it.isNotBlank() } ?: stringResource(R.string.author_title, userId),
+            userId = profile?.id?.takeIf { it.isNotBlank() } ?: userId,
+            url = authorUrl,
+            fallbackTemplate = stringResource(R.string.share_format_default_author),
+        )
         AuthorTopBar(
             backdrop = backdrop,
             dark = effectDark,
@@ -374,8 +428,15 @@ fun AuthorScreen(
             },
             onCopyLink = {
                 val cm = context.getSystemService(ClipboardManager::class.java)
-                cm?.setPrimaryClip(ClipData.newPlainText("pixiv", authorUrl))
+                cm?.setPrimaryClip(ClipData.newPlainText("pixiv", shareText))
                 Toast.makeText(context, resources.getString(R.string.detail_link_copied), Toast.LENGTH_SHORT).show()
+            },
+            onShare = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, shareText)
+                }
+                context.startActivity(Intent.createChooser(send, null))
             },
         )
     }
@@ -393,6 +454,7 @@ private fun AuthorTopBar(
     onBack: () -> Unit,
     onOpenBrowser: () -> Unit,
     onCopyLink: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val barColors = CouiTopAppBarDefaults.colors(dark = CouiTheme.isDark)
     val density = LocalDensity.current
@@ -436,7 +498,7 @@ private fun AuthorTopBar(
                     .padding(horizontal = 8.dp)
                     .graphicsLayer {
                         val p = collapseProgress()
-                        val t = ((p - 0.52f) / 0.48f).coerceIn(0f, 1f)
+                        val t = ((p - 0.35f) / 0.65f).coerceIn(0f, 1f)
                         alpha = t
                         translationY = (1f - t) * topRisePx
                     },
@@ -479,6 +541,7 @@ private fun AuthorTopBar(
                             dividerBefore = true,
                         ),
                         CouiMenuItem(value = 4, text = stringResource(R.string.detail_copy_link)),
+                        CouiMenuItem(value = 5, text = stringResource(R.string.detail_action_share)),
                     ),
                     onItemClick = { item ->
                         menuExpanded = false
@@ -486,6 +549,7 @@ private fun AuthorTopBar(
                             in 0..2 -> onSelectFilter(item.value)
                             3 -> onOpenBrowser()
                             4 -> onCopyLink()
+                            5 -> onShare()
                         }
                     },
                 )
@@ -494,25 +558,12 @@ private fun AuthorTopBar(
     }
 }
 
-private fun IllustDetail.toSearchItem(): SearchItem = SearchItem(
-    id = id,
-    category = if (illustType == 1) SearchCategory.MANGA else SearchCategory.ILLUST,
-    title = title,
-    thumbUrl = thumbUrl,
-    fullUrl = previewUrl,
-    userId = userId,
-    userName = userName,
-    xRestrict = xRestrict,
-    width = width,
-    height = height,
-    pageCount = pageCount,
-    textCount = 0,
-    tags = tags,
-    seriesTitle = null,
-)
+private val AuthorCoverShape = CachedCouiShape(20.dp, 3f)
+private val UidChipShape = CachedCouiShape(6.dp, 3f)
 
 @Composable
 private fun ProfileHeader(
+    userId: String,
     profile: UserProfile?,
     error: String?,
     isFollowed: Boolean,
@@ -520,13 +571,69 @@ private fun ProfileHeader(
     backdrop: CouiBackdrop,
     dark: Boolean,
     collapseProgress: () -> Float,
+    onNameRowPositioned: (Float) -> Unit,
 ) {
     val colors = CouiPageDefaults.themeColors()
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     val nameShiftPx = with(density) { 14.dp.toPx() }
-    val uidShiftPx = with(density) { 22.dp.toPx() }
+    val displayUid = profile?.id?.takeIf { it.isNotBlank() } ?: userId
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        val coverUrl = profile?.backgroundUrl.orEmpty()
+        if (coverUrl.isNotBlank()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.9f)
+                    .background(colors.card, AuthorCoverShape)
+                    .g2CornerMask(AuthorCoverShape, colors.background),
+            ) {
+                RetryableImage(
+                    url = coverUrl,
+                    contentDescription = profile?.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CategoryBadge(
+                text = stringResource(R.string.work_type_author),
+                accent = colors.accent,
+            )
+            Text(
+                text = "UID $displayUid",
+                kind = CouiTextKind.ItemSummary,
+                color = colors.summary,
+                modifier = Modifier
+                    .clip(UidChipShape)
+                    .clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val cm = context.getSystemService(ClipboardManager::class.java)
+                        cm?.setPrimaryClip(ClipData.newPlainText("uid", displayUid))
+                        Toast.makeText(
+                            context,
+                            resources.getString(R.string.author_uid_copied),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.onPlaced { coords ->
+                onNameRowPositioned(coords.positionInParent().y)
+            },
+        ) {
             if (profile != null && profile.avatarUrl.isNotBlank()) {
                 RetryableImage(
                     url = profile.avatarUrl,
@@ -546,30 +653,19 @@ private fun ProfileHeader(
                 )
             }
             Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f)) {
                 Text(
                     text = profile?.name ?: error ?: stringResource(R.string.search_loading),
                     kind = CouiTextKind.ItemTitle,
                     color = colors.title,
-                    maxLines = 1,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.graphicsLayer {
                         val p = collapseProgress()
                         translationY = -nameShiftPx * p
-                        alpha = (1f - p / 0.72f).coerceIn(0f, 1f)
+                        alpha = (1f - p / 0.65f).coerceIn(0f, 1f)
                     },
                 )
-                if (profile != null) {
-                    Text(
-                        text = "UID ${profile.id}",
-                        kind = CouiTextKind.ItemSummary,
-                        color = colors.summary,
-                        modifier = Modifier.graphicsLayer {
-                            val p = collapseProgress()
-                            translationY = -uidShiftPx * p
-                            alpha = (1f - ((p - 0.55f) / 0.45f).coerceIn(0f, 1f))
-                        },
-                    )
-                }
             }
             Spacer(Modifier.width(10.dp))
             GlowChip(

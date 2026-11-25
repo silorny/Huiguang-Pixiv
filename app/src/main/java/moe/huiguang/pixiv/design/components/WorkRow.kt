@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -67,6 +68,7 @@ fun WorkRow(
         Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .background(colors.card, cardShape)
+            .g2CornerMask(cardShape, colors.background)
             .then(clickModifier)
             .padding(10.dp)
     } else {
@@ -99,6 +101,7 @@ internal fun WorkRowBody(
     enabled: Boolean = true,
 ) {
     val colors = CouiPageDefaults.themeColors()
+    val opaqueCardColor = colors.card.compositeOver(colors.background)
     val thumbShape = WorkRowThumbShape
     Row(
         modifier = modifier,
@@ -118,7 +121,7 @@ internal fun WorkRowBody(
                 modifier = Modifier
                     .size(64.dp)
                     .background(colors.background)
-                    .g2CornerMask(thumbShape, colors.card),
+                    .g2CornerMask(thumbShape, opaqueCardColor),
             )
         }
         Spacer(Modifier.width(12.dp))

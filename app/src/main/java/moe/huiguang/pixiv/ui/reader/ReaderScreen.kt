@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -58,6 +59,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -84,6 +86,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -95,6 +98,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -111,9 +116,11 @@ import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.effect.couiToolbarFeedback
 import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.icons.CouiIcons
@@ -131,12 +138,16 @@ import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.shape.CouiShape
+import com.itos.coui.sheet.BottomSheet
+import com.itos.coui.sheet.CouiSheetButton
+import com.itos.coui.sheet.CouiSheetDefaults
 import com.itos.coui.slider.CouiSliderDefaults
 import com.itos.coui.slider.Slider
 import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
+import com.itos.coui.theme.LocalCouiContentColor
 import com.itos.coui.topappbar.TopAppBarSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
@@ -159,6 +170,8 @@ import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SecondaryButton
+import moe.huiguang.pixiv.design.components.SettingSwitchRow
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
 import moe.huiguang.pixiv.ui.novel.NovelCache
 import moe.huiguang.pixiv.ui.viewer.ImageViewerContent
 import kotlin.math.abs
@@ -333,7 +346,7 @@ fun ReaderScreen(
 
     val listState = rememberLazyListState()
     var chrome by remember { mutableStateOf(true) }
-    var showStyle by remember { mutableStateOf(false) }
+    val showStyle = remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
     var previewImageIndex by remember { mutableStateOf<Int?>(null) }
     var exporting by remember { mutableStateOf(false) }
@@ -866,7 +879,7 @@ fun ReaderScreen(
                         Toast.LENGTH_SHORT,
                     ).show()
                 },
-                onStyle = { showStyle = true },
+                onStyle = { showStyle.value = true },
                 onExport = {
                     if (exporting) return@ReaderTopBar
                     exporting = true
@@ -925,18 +938,17 @@ fun ReaderScreen(
 
     val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(appDark) else null
 
-    TypographyDialog(
+    TypographySheet(
         visible = showStyle,
         style = style,
         dark = appDark,
-        material = dialogMaterial,
         windowBackdrop = windowBackdrop,
         onFontSize = { settings.setReaderFontSize(it) },
         onWeight = { settings.setReaderWeight(it) },
         onIndent = { settings.setReaderIndent(it) },
         onPaperTheme = { settings.setReaderPaperTheme(it) },
         onLineSpacing = { settings.setReaderLineSpacing(it) },
-        onDismiss = { showStyle = false },
+        onReset = { settings.resetReaderStyle() },
     )
 
     TocDialog(
@@ -1775,100 +1787,321 @@ private fun RailPercent(
     )
 }
 
+private val SwatchShape = CachedCouiShape(14.dp, 3f)
+
 @Composable
-private fun TypographyDialog(
-    visible: Boolean,
+private fun TypographySheet(
+    visible: MutableState<Boolean>,
     style: ReaderStyle,
     dark: Boolean,
-    material: com.itos.coui.dialog.CouiDialogMaterial?,
     windowBackdrop: CouiBackdrop?,
     onFontSize: (Int) -> Unit,
     onWeight: (Int) -> Unit,
     onIndent: (Boolean) -> Unit,
     onPaperTheme: (PaperTheme) -> Unit,
     onLineSpacing: (Float) -> Unit,
-    onDismiss: () -> Unit,
+    onReset: () -> Unit,
 ) {
-    Dialog(
+    val colors = CouiPageDefaults.themeColors()
+    val haptics = LocalHapticFeedback.current
+    val checkIcon = ImageVector.vectorResource(R.drawable.ic_check)
+    val restartIcon = ImageVector.vectorResource(R.drawable.ic_restart_alt)
+    val sheetMaterial = if (CouiDialogDefaults.isMaterialSupported() && windowBackdrop != null) {
+        CouiSheetDefaults.material(dark)
+    } else {
+        null
+    }
+    var confirmReset by remember { mutableStateOf(false) }
+
+    BottomSheet(
         visible = visible,
-        onDismissRequest = onDismiss,
         dark = dark,
-        material = material,
+        sheetHeight = null,
+        showDragHandle = true,
         backdrop = windowBackdrop,
-        title = stringResource(R.string.reader_style),
-        confirmAction = CouiDialogAction(stringResource(R.string.action_ok), onClick = onDismiss),
+        material = sheetMaterial,
+        leadingButton = CouiSheetButton(
+            onClick = { visible.value = false },
+            enabled = visible.value,
+            icon = {
+                Image(
+                    imageVector = checkIcon,
+                    contentDescription = stringResource(R.string.action_ok),
+                    colorFilter = ColorFilter.tint(LocalCouiContentColor.current),
+                    modifier = Modifier.size(22.dp),
+                )
+            },
+        ),
+        titleContent = {
+            Text(
+                text = stringResource(R.string.reader_style_title),
+                kind = CouiTextKind.SheetTitle,
+            )
+        },
+        trailingButton = CouiSheetButton(
+            onClick = { confirmReset = true },
+            enabled = visible.value,
+            icon = {
+                Image(
+                    imageVector = restartIcon,
+                    contentDescription = stringResource(R.string.share_format_reset),
+                    colorFilter = ColorFilter.tint(LocalCouiContentColor.current),
+                    modifier = Modifier.size(22.dp),
+                )
+            },
+        ),
     ) {
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Text(
-                text = stringResource(R.string.reader_paper_theme),
-                kind = CouiTextKind.ItemSummary,
-            )
-            Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.reader_paper_theme),
+            kind = CouiTextKind.ItemSummary,
+            color = colors.summary,
+            modifier = Modifier.padding(horizontal = CouiPageDefaults.horizontalMargin + 4.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiPageDefaults.horizontalMargin),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             val themes = listOf(PaperTheme.SYSTEM, PaperTheme.IVORY, PaperTheme.SAGE, PaperTheme.DARK)
-            SegmentedControl(
-                modifier = Modifier.fillMaxWidth(),
-                labels = listOf(
-                    stringResource(R.string.reader_paper_system),
-                    stringResource(R.string.reader_paper_ivory),
-                    stringResource(R.string.reader_paper_sage),
-                    stringResource(R.string.reader_paper_dark),
-                ),
-                selectedIndex = themes.indexOf(style.paperTheme).coerceAtLeast(0),
-                onSelected = { onPaperTheme(themes[it]) },
-                small = true,
-            )
-            Spacer(Modifier.height(14.dp))
-            Text(
-                text = stringResource(R.string.reader_font_size, style.fontSize),
-                kind = CouiTextKind.ItemSummary,
-            )
-            Slider(
-                modifier = Modifier.fillMaxWidth(),
-                value = style.fontSize.toFloat(),
-                onValueChange = { onFontSize(it.toInt()) },
-                valueRange = 13f..23f,
-                steps = 9,
-            )
-            Spacer(Modifier.height(10.dp))
-            val spacings = listOf(1.6f, 1.9f, 2.2f)
-            val spacingIndex = spacings.indices.minByOrNull { abs(spacings[it] - style.lineSpacing) } ?: 1
-            Text(
-                text = stringResource(R.string.reader_line_spacing, spacings[spacingIndex].toString()),
-                kind = CouiTextKind.ItemSummary,
-            )
-            Spacer(Modifier.height(6.dp))
-            SegmentedControl(
-                modifier = Modifier.fillMaxWidth(),
-                labels = listOf("1.6×", "1.9×", "2.2×"),
-                selectedIndex = spacingIndex,
-                onSelected = { onLineSpacing(spacings[it]) },
-                small = true,
-            )
-            Spacer(Modifier.height(12.dp))
-            val weights = listOf(300, 400, 500, 700)
-            SegmentedControl(
-                modifier = Modifier.fillMaxWidth(),
-                labels = listOf(
-                    stringResource(R.string.reader_weight_light),
-                    stringResource(R.string.reader_weight_regular),
-                    stringResource(R.string.reader_weight_medium),
-                    stringResource(R.string.reader_weight_bold),
-                ),
-                selectedIndex = weights.indexOf(style.weight).coerceAtLeast(0),
-                onSelected = { onWeight(weights[it]) },
-                small = true,
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(text = stringResource(R.string.reader_indent), kind = CouiTextKind.ItemTitle)
-                Switch(checked = style.indent, onCheckedChange = onIndent)
+            themes.forEach { theme ->
+                PaperSwatchChip(
+                    theme = theme,
+                    appDark = dark,
+                    selected = style.paperTheme == theme,
+                    accent = colors.accent,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onPaperTheme(theme)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
-            Spacer(Modifier.height(8.dp))
         }
+        Spacer(Modifier.height(14.dp))
+        Group {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                Text(
+                    text = stringResource(R.string.reader_font_size, style.fontSize),
+                    kind = CouiTextKind.ItemSummary,
+                    color = colors.summary,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    FontStepButton(
+                        label = "A-",
+                        enabled = style.fontSize > 13,
+                        dark = dark,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onFontSize((style.fontSize - 1).coerceAtLeast(13))
+                        },
+                    )
+                    Slider(
+                        modifier = Modifier.weight(1f),
+                        value = style.fontSize.toFloat(),
+                        onValueChange = { onFontSize(it.roundToInt()) },
+                        valueRange = 13f..23f,
+                        steps = 9,
+                    )
+                    FontStepButton(
+                        label = "A+",
+                        enabled = style.fontSize < 23,
+                        dark = dark,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onFontSize((style.fontSize + 1).coerceAtMost(23))
+                        },
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                val spacings = listOf(1.6f, 1.9f, 2.2f)
+                val spacingIndex = spacings.indices.minByOrNull { abs(spacings[it] - style.lineSpacing) } ?: 1
+                Text(
+                    text = stringResource(R.string.reader_line_spacing, spacings[spacingIndex].toString()),
+                    kind = CouiTextKind.ItemSummary,
+                    color = colors.summary,
+                )
+                Spacer(Modifier.height(8.dp))
+                SegmentedControl(
+                    modifier = Modifier.fillMaxWidth(),
+                    labels = listOf("1.6×", "1.9×", "2.2×"),
+                    selectedIndex = spacingIndex,
+                    onSelected = { onLineSpacing(spacings[it]) },
+                    small = true,
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.reader_weight),
+                    kind = CouiTextKind.ItemSummary,
+                    color = colors.summary,
+                )
+                Spacer(Modifier.height(8.dp))
+                val weights = listOf(300, 400, 500, 700)
+                SegmentedControl(
+                    modifier = Modifier.fillMaxWidth(),
+                    labels = listOf(
+                        stringResource(R.string.reader_weight_light),
+                        stringResource(R.string.reader_weight_regular),
+                        stringResource(R.string.reader_weight_medium),
+                        stringResource(R.string.reader_weight_bold),
+                    ),
+                    selectedIndex = weights.indexOf(style.weight).coerceAtLeast(0),
+                    onSelected = { onWeight(weights[it]) },
+                    small = true,
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Group {
+            SettingSwitchRow(
+                title = stringResource(R.string.reader_indent),
+                checked = style.indent,
+                onCheckedChange = onIndent,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+
+        val sheetDialogBackdrop = rememberCouiWindowBackdrop()
+        val sheetDialogMaterial = if (sheetDialogBackdrop != null) CouiDialogDefaults.material(dark) else null
+        val destructiveColors = CouiDialogDefaults.primaryActionColors(CouiDialogDefaults.colors(dark).destructive)
+        Dialog(
+            visible = confirmReset,
+            onDismissRequest = { confirmReset = false },
+            title = stringResource(R.string.reader_style_reset_title),
+            message = stringResource(R.string.reader_style_reset_message),
+            dark = dark,
+            material = sheetDialogMaterial,
+            backdrop = sheetDialogBackdrop,
+            confirmAction = CouiDialogAction(
+                text = stringResource(R.string.reader_style_reset_confirm),
+                onClick = {
+                    onReset()
+                    confirmReset = false
+                },
+                style = CouiDialogActionStyle.Primary,
+                colors = destructiveColors,
+            ),
+            dismissAction = CouiDialogAction(
+                text = stringResource(R.string.action_cancel),
+                onClick = { confirmReset = false },
+            ),
+        )
+    }
+}
+
+@Composable
+private fun PaperSwatchChip(
+    theme: PaperTheme,
+    appDark: Boolean,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val swatchPalette = paperPalette(theme, appDark)
+    val label = when (theme) {
+        PaperTheme.SYSTEM -> stringResource(R.string.reader_paper_system)
+        PaperTheme.IVORY -> stringResource(R.string.reader_paper_ivory)
+        PaperTheme.SAGE -> stringResource(R.string.reader_paper_sage)
+        PaperTheme.DARK -> stringResource(R.string.reader_paper_dark)
+    }
+    val interaction = remember { MutableInteractionSource() }
+    val border = if (selected) {
+        BorderStroke(2.dp, accent)
+    } else {
+        BorderStroke(0.5.dp, if (swatchPalette.dark) Color(0x33FFFFFF) else Color(0x26000000))
+    }
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(SwatchShape)
+            .background(swatchPalette.background, SwatchShape)
+            .border(border, SwatchShape)
+            .couiButtonFeedback(swatchPalette.dark, interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (theme == PaperTheme.SYSTEM) {
+                Canvas(Modifier.size(12.dp)) {
+                    val strokeColor = if (appDark) Color(0xFFE8E6E1) else Color(0xFF232323)
+                    drawCircle(color = Color(0xFFF7F5F0))
+                    drawArc(
+                        color = Color(0xFF141416),
+                        startAngle = 90f,
+                        sweepAngle = 180f,
+                        useCenter = true,
+                    )
+                    drawCircle(
+                        color = strokeColor.copy(alpha = 0.45f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
+                    )
+                }
+            }
+            BasicText(
+                text = label,
+                style = TextStyle(
+                    color = swatchPalette.ink,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FontStepButton(
+    label: String,
+    enabled: Boolean,
+    dark: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = CouiPageDefaults.themeColors()
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .width(38.dp)
+            .height(30.dp)
+            .clip(CouiCapsuleShape)
+            .background(if (dark) Color(0x1FFFFFFF) else Color(0x12000000), CouiCapsuleShape)
+            .couiButtonFeedback(dark, interaction, enabled)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(
+            text = label,
+            style = TextStyle(
+                color = if (enabled) colors.title else colors.summary.copy(alpha = 0.45f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            maxLines = 1,
+        )
     }
 }
 

@@ -84,8 +84,16 @@ class PixivApiHttpTest {
             else 200 to """{"isSucceed":true}"""
         path == "/ajax/illusts/bookmarks/add" -> 200 to """{"error":false,"body":{"last_bookmark_id":"999111"}}"""
         path == "/ajax/illusts/bookmarks/delete" -> 200 to """{"error":false,"body":[]}"""
+        path == "/ajax/illusts/bookmarks/edit_restrict" -> 200 to """{"error":false,"body":[]}"""
         path == "/ajax/novels/bookmarks/add" -> 200 to """{"error":false,"body":"888222"}"""
         path == "/ajax/novels/bookmarks/delete" -> 200 to """{"error":false,"body":[]}"""
+        path == "/ajax/novels/bookmarks/edit_restrict" -> 200 to """{"error":false,"body":[]}"""
+        path == "/ajax/user/42" -> 200 to USER_WITH_BG_JSON
+        path == "/ajax/user/43" -> 200 to USER_NO_BG_JSON
+        path == "/ajax/user/42/profile/all" -> 200 to USER_PROFILE_ALL_JSON
+        path == "/ajax/user/42/profile/illusts" -> 200 to USER_PROFILE_ILLUSTS_JSON
+        path == "/ajax/user/12345/illusts/bookmarks" -> 200 to BOOKMARK_ILLUSTS_JSON
+        path == "/ajax/user/12345/novels/bookmarks" -> 200 to BOOKMARK_NOVELS_JSON
         path == "/ajax/illust/404" -> 404 to "{\"error\":true}"
         path == "/ajax/illust/777" -> 200 to ILLUST_JSON
         path == "/ajax/illust/drop" -> 200 to ILLUST_JSON
@@ -290,6 +298,52 @@ class PixivApiHttpTest {
     }
 
     @Test
+    fun `bookmarks support rest hide and setBookmarkVisibility switches restrict`() = runBlocking {
+        val client = api("PHPSESSID=12345_real")
+        val items = client.bookmarks("12345", limit = 24, offset = 0, privateOnly = true)
+        assertEquals(2, items.size)
+        assertTrue(lastQuery["/ajax/user/12345/illusts/bookmarks"].orEmpty().contains("rest=hide"))
+        assertTrue(lastQuery["/ajax/user/12345/novels/bookmarks"].orEmpty().contains("rest=hide"))
+        assertEquals(800, items[0].width)
+        assertEquals(1200, items[0].height)
+        assertEquals("bm-1", items[0].bookmarkId)
+        assertEquals("bm-2", items[1].bookmarkId)
+
+        assertTrue(client.setBookmarkVisibility("777", novel = false, bookmarkId = "bm-1", makePrivate = true, userId = "12345"))
+        assertEquals("$baseUrl/users/12345/bookmarks/artworks", lastReferer["/ajax/illusts/bookmarks/edit_restrict"])
+        assertTrue(lastRequestBody["/ajax/illusts/bookmarks/edit_restrict"].orEmpty().contains("\"private\""))
+
+        assertTrue(client.setBookmarkVisibility("888", novel = true, bookmarkId = "bm-2", makePrivate = false, userId = "12345"))
+        assertEquals("$baseUrl/users/12345/bookmarks/novels", lastReferer["/ajax/novels/bookmarks/edit_restrict"])
+        assertTrue(lastRequestBody["/ajax/novels/bookmarks/edit_restrict"].orEmpty().contains("\"public\""))
+    }
+
+    @Test
+    fun `user parses background url when present and empty when null`() = runBlocking {
+        val withBg = api().user("42")
+        assertNotNull(withBg)
+        assertEquals("https://i.pximg.net/c/1920x960_80_a2_g5/background/img/2026/bg.jpg", withBg!!.backgroundUrl)
+
+        val noBg = api().user("43")
+        assertNotNull(noBg)
+        assertEquals("", noBg!!.backgroundUrl)
+    }
+
+    @Test
+    fun `userArtworkItemsPage separates illusts and manga via batch profile endpoint`() = runBlocking {
+        val client = api()
+        val illusts = client.userArtworkItemsPage("42", SearchCategory.ILLUST, offset = 0, limit = 18)
+        assertEquals(listOf("901"), illusts.map { it.id })
+        assertEquals(SearchCategory.ILLUST, illusts[0].category)
+        assertTrue(lastQuery["/ajax/user/42/profile/illusts"].orEmpty().contains("work_category=illust"))
+
+        val mangas = client.userArtworkItemsPage("42", SearchCategory.MANGA, offset = 0, limit = 18)
+        assertEquals(listOf("902"), mangas.map { it.id })
+        assertEquals(SearchCategory.MANGA, mangas[0].category)
+        assertTrue(lastQuery["/ajax/user/42/profile/illusts"].orEmpty().contains("work_category=manga"))
+    }
+
+    @Test
     fun `production api never sends session cookie to loopback hosts`() {
         val prodApi = PixivApi(cookieProvider = { "PHPSESSID=secret_token" })
         val req = okhttp3.Request.Builder().url("$baseUrl/ajax/illust/777").get().build()
@@ -442,6 +496,53 @@ class PixivApiHttpTest {
           "user_id":12,"user_name":"作者R","width":1000,"height":1400,"tags":["tag"],
           "illust_content_type":{"sexual":0}
         }]}
+        """
+
+        const val BOOKMARK_ILLUSTS_JSON = """
+        {"error":false,"body":{"works":[{
+          "id":"777","title":"絵A","url":"https://i.pximg.net/c/250x250_80_a2/img-master/777_p0_square1200.jpg",
+          "userId":"1","userName":"u","pageCount":2,"xRestrict":0,"illustType":0,"width":800,"height":1200,
+          "tags":["tag1"],"bookmarkData":{"id":"bm-1","private":true}
+        }]}}
+        """
+
+        const val BOOKMARK_NOVELS_JSON = """
+        {"error":false,"body":{"works":[{
+          "id":"888","title":"小説B","url":"https://i.pximg.net/novel/888.jpg",
+          "userId":"2","userName":"v","textCount":1200,"xRestrict":0,
+          "tags":["小説"],"bookmarkData":{"id":"bm-2","private":true}
+        }]}}
+        """
+
+        const val USER_WITH_BG_JSON = """
+        {"error":false,"body":{
+          "userId":"42","name":"絵師42","imageBig":"https://i.pximg.net/42.png",
+          "comment":"bio","following":5,"mypixivCount":1,"premium":false,"isFollowed":false,
+          "background":{"url":"https://i.pximg.net/c/1920x960_80_a2_g5/background/img/2026/bg.jpg"}
+        }}
+        """
+
+        const val USER_NO_BG_JSON = """
+        {"error":false,"body":{
+          "userId":"43","name":"絵師43","imageBig":"https://i.pximg.net/43.png",
+          "comment":"bio","following":0,"mypixivCount":0,"premium":false,"isFollowed":false,
+          "background":null
+        }}
+        """
+
+        const val USER_PROFILE_ALL_JSON = """
+        {"error":false,"body":{
+          "illusts":{"901":null},
+          "manga":{"902":null},
+          "novels":{}
+        }}
+        """
+
+        const val USER_PROFILE_ILLUSTS_JSON = """
+        {"error":false,"body":{"works":{
+          "901":{"id":"901","title":"Illust901","illustType":0,"xRestrict":0,"url":"https://i.pximg.net/901.jpg","userId":"42","userName":"絵師42","width":800,"height":1000,"pageCount":1,"tags":["t1"]},
+          "902":{"id":"902","title":"Manga902","illustType":1,"xRestrict":0,"url":"https://i.pximg.net/902.jpg","userId":"42","userName":"絵師42","width":800,"height":1200,"pageCount":8,"tags":["t2"]}
+        }}}
         """
     }
 }

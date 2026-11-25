@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,14 +82,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.huiguang.pixiv.BuildConfig
 import moe.huiguang.pixiv.R
+import moe.huiguang.pixiv.data.net.AppUpdateService
+import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
-import okhttp3.CookieJar
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 private const val HUIGUANG_REPO_URL = "https://github.com/silorny/Huiguang-Pixiv"
 private const val TELEGRAM_GROUP_URL = "https://t.me/+PYSc-rhPaWs4Mjhl"
@@ -107,35 +106,6 @@ private val ConcentricInnerShape = CouiShape(12.dp, 3f)
  * device-identifying User-Agent strings.
  */
 private object GitHubPublicClient {
-    private val ALLOWED_HOSTS = setOf(
-        "api.github.com",
-        "github.com",
-        "avatars.githubusercontent.com",
-    )
-
-    val http: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .cookieJar(CookieJar.NO_COOKIES)
-            .addNetworkInterceptor { chain ->
-                val req = chain.request()
-                val host = req.url.host.lowercase()
-                if (req.url.scheme != "https" || host !in ALLOWED_HOSTS) {
-                    throw IOException("Blocked non-GitHub host: $host")
-                }
-                val cleaned = req.newBuilder()
-                    .removeHeader("Referer")
-                    .removeHeader("Cookie")
-                    .removeHeader("Accept-Language")
-                    .header("User-Agent", "Huiguang")
-                    .build()
-                chain.proceed(cleaned)
-            }
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .callTimeout(15, TimeUnit.SECONDS)
-            .build()
-    }
-
     @Volatile
     private var cachedImageLoader: ImageLoader? = null
 
@@ -143,7 +113,7 @@ private object GitHubPublicClient {
         cachedImageLoader ?: synchronized(this) {
             cachedImageLoader ?: ImageLoader.Builder(context.applicationContext)
                 .components {
-                    add(OkHttpNetworkFetcherFactory(callFactory = { http }))
+                    add(OkHttpNetworkFetcherFactory(callFactory = { AppUpdateService.publicHttp }))
                 }
                 .diskCachePolicy(CachePolicy.DISABLED)
                 .build()
@@ -159,6 +129,7 @@ private object GitHubPublicClient {
 fun AboutScreen(
     onBack: () -> Unit,
     onOpenDoc: (String) -> Unit,
+    settings: SettingsStore? = null,
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
@@ -171,7 +142,8 @@ fun AboutScreen(
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    var showUpdateDialog by remember { mutableStateOf(false) }
+    val showUpdateSheet = remember { mutableStateOf(false) }
+    var updateCheckKey by remember { mutableIntStateOf(0) }
     var showRepoDialog by remember { mutableStateOf(false) }
     var showTelegramDialog by remember { mutableStateOf(false) }
 
@@ -216,7 +188,10 @@ fun AboutScreen(
                     }
                     Divider()
                     Item(
-                        onClick = { showUpdateDialog = true },
+                        onClick = {
+                            updateCheckKey++
+                            showUpdateSheet.value = true
+                        },
                         trailing = { NextChevron() },
                     ) {
                         Text(
@@ -307,27 +282,12 @@ fun AboutScreen(
     }
 
     val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(dark) else null
-    // Offline-only version dialog for now. If online update checking (e.g. GitHub
-    // Releases) is added later, reuse an isolated clean client like GitHubPublicClient
-    // (no Pixiv Referer, cookies, or identifiers), trigger only on explicit user action,
-    // and disclose the endpoint in about_agreement_sec_network_body.
-    Dialog(
-        visible = showUpdateDialog,
-        onDismissRequest = { showUpdateDialog = false },
-        title = stringResource(R.string.about_update_latest_title),
-        message = stringResource(
-            R.string.about_update_latest_msg,
-            BuildConfig.VERSION_NAME,
-            BuildConfig.VERSION_CODE,
-        ),
-        material = dialogMaterial,
-        backdrop = windowBackdrop,
-        confirmAction = CouiDialogAction(
-            text = stringResource(R.string.action_ok),
-            onClick = { showUpdateDialog = false },
-            style = CouiDialogActionStyle.Primary,
-            colors = CouiDialogDefaults.primaryActionColors(CouiTheme.colorScheme.accent),
-        ),
+    UpdateBottomSheet(
+        visible = showUpdateSheet,
+        checkKey = updateCheckKey,
+        dark = dark,
+        windowBackdrop = windowBackdrop,
+        onSkipVersion = { tag -> settings?.setSkippedUpdateTag(tag) },
     )
 
     Dialog(
@@ -465,7 +425,7 @@ private fun AboutAuthorCard(
                     .header("Accept", "application/vnd.github+json")
                     .header("User-Agent", "Huiguang")
                     .build()
-                GitHubPublicClient.http.newCall(req).execute().use { resp ->
+                AppUpdateService.publicHttp.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@withContext null
                     JSONObject(resp.body.string())
                 }
@@ -649,6 +609,15 @@ private val OpenSourceComponents = listOf(
         homepageHost = "github.com",
         homepageUrl = "https://github.com/JetBrains/java-annotations",
         copyright = "JetBrains s.r.o.",
+    ),
+    OpenSourceComponent(
+        name = "Material Icons (Vectors)",
+        licenseShort = "Apache-2.0",
+        licenseAsset = "apache-2.0",
+        homepageHost = "github.com",
+        homepageUrl = "https://github.com/google/material-design-icons",
+        copyright = "Google LLC",
+        notesRes = R.string.license_material_icons_notes,
     ),
 )
 

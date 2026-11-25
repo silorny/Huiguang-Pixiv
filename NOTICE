@@ -16,7 +16,7 @@
 二、上游设计库与随附资源许可声明
 --------------------------------
 
-本应用用户界面基于开源项目 COUI-Kit（coui 与 coui-icons 0.0.1-alpha11）构建：
+本应用用户界面基于开源项目 COUI-Kit（coui 与 coui-icons 0.0.1-alpha15）构建：
 - 项目主页：https://github.com/ItosEO/COUI-Kit
 - 自有源代码许可：Mozilla Public License 2.0（MPL-2.0）
   依据 MPL-2.0 第 3.2(a) 条，COUI-Kit 对应版本源代码可通过上述 GitHub 仓库获取。
@@ -92,3 +92,9 @@
     - 许可协议：Apache-2.0
     - 版权归属：JetBrains s.r.o.
     - 主页：https://github.com/JetBrains/java-annotations
+
+13. Material Icons (Vectors)
+    - 许可协议：Apache-2.0
+    - 版权归属：Google LLC
+    - 主页：https://github.com/google/material-design-icons
+    - 说明：用于应用内矢量操作图标（ic_restart_alt.xml、ic_check.xml）

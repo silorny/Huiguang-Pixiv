@@ -39,7 +39,10 @@ data class CachedCouiShape(
         layoutDirection: LayoutDirection,
         density: Density,
     ): Outline {
-        val r = (radius.value * density.density).coerceIn(0f, size.minDimension.coerceAtLeast(0f) / 2f)
+        if (!size.width.isFinite() || !size.height.isFinite() || size.minDimension <= 0f) {
+            return Outline.Rectangle(Rect(0f, 0f, size.width.coerceAtLeast(0f), size.height.coerceAtLeast(0f)))
+        }
+        val r = (radius.value * density.density).coerceIn(0f, size.minDimension / 2f)
         if (r == 0f) return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
         val key = OutlineKey(size.width, size.height, r, cornerWeight)
         cachedOutlines[key]?.let { return it }

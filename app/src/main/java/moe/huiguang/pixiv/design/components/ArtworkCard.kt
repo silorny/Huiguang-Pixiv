@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -48,6 +49,22 @@ private val CardInnerShape = CachedCouiShape(14.dp, 3f)
 private val BadgeShape = CachedCouiShape(8.dp, 3f)
 private val BadgeTextStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
 
+private val WATERFALL_THUMB_RULES = listOf(
+    "/c/480x960/" to "/c/240x480/",
+    "/c/540x540_70/" to "/c/360x360_70/",
+    "/c/600x600/img-master/" to "/c/360x360_70/img-master/",
+    "/c/600x600/custom-thumb/" to "/c/360x360_70/custom-thumb/",
+)
+
+/** Rewrites large Pixiv thumbnail CDN presets to lighter equivalents for fast waterfall scrolling. */
+internal fun downgradeWaterfallThumbUrl(url: String): String {
+    if (url.isEmpty()) return url
+    for ((from, to) in WATERFALL_THUMB_RULES) {
+        if (url.contains(from)) return url.replace(from, to)
+    }
+    return url
+}
+
 /**
  * The one media card used by home, search results and user pages.
  *
@@ -62,6 +79,7 @@ fun ArtworkCard(
     modifier: Modifier = Modifier,
     showAuthor: Boolean = true,
     revealR18: Boolean = true,
+    lowQualityThumb: Boolean = false,
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
@@ -72,10 +90,15 @@ fun ArtworkCard(
     // Novels do not report image pixel dimensions; Pixiv covers are ~427x600.
     val ratio = item.aspectRatio?.takeIf { it > 0.1f } ?: if (isNovel) 1.38f else 0.75f
     val maskR18 = item.isAdult && !revealR18
+    val rawThumb = item.thumbUrl.ifBlank { item.fullUrl }
+    val imageUrl = if (lowQualityThumb) downgradeWaterfallThumbUrl(rawThumb) else rawThumb
+
+    val opaqueCardColor = colors.card.compositeOver(colors.background)
 
     Column(
         modifier = modifier
             .background(colors.card, CardOuterShape)
+            .g2CornerMask(CardOuterShape, colors.background)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -93,14 +116,16 @@ fun ArtworkCard(
                 .fillMaxWidth()
                 .aspectRatio((1f / ratio).coerceIn(0.45f, 1.8f))
                 .background(colors.background)
-                .g2CornerMask(CardInnerShape, colors.card),
+                .g2CornerMask(CardInnerShape, opaqueCardColor),
         ) {
             RetryableImage(
-                url = item.thumbUrl.ifBlank { item.fullUrl },
+                url = imageUrl,
                 contentDescription = listOf(item.title, item.userName)
                     .filter { it.isNotBlank() }
                     .joinToString(" · "),
                 contentScale = ContentScale.Crop,
+                allowRgb565 = lowQualityThumb,
+                maxDecodeSizePx = if (lowQualityThumb) 360 else 0,
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (maskR18) Modifier.blur(20.dp) else Modifier),

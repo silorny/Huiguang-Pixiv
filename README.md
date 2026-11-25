@@ -2,7 +2,7 @@
 
 一款基于原生 Jetpack Compose 与 [COUI-Kit](https://github.com/ItosEO/COUI-Kit)（`0.0.1-alpha15`）构建的第三方 Pixiv Android 客户端。全应用遵循纯 COUI 视觉与交互规范，不依赖 Material 3，提供插画、漫画、小说及 Pixivision 特辑的完整浏览、搜索、收藏与阅读体验。
 
-- **当前版本**：`0.1.2`（`versionCode = 15`）
+- **当前版本**：`0.1.3`
 - **项目仓库**：[silorny/Huiguang-Pixiv](https://github.com/silorny/Huiguang-Pixiv)（Apache-2.0）
 - **应用包名**：`moe.huiguang.pixiv`
 - **支持系统**：Android 14 及以上（`minSdk = 34`，`compileSdk = 37.1`，`targetSdk = 37`）
@@ -12,20 +12,20 @@
 
 ## 功能概览
 
-- **首页推荐流**：支持「推荐」「排行榜」「关注新作」三大分区及全部 / 插画 / 漫画 / 小说顶栏悬浮分类菜单，排行榜支持今日 / 本周 / 本月 / 新人维度切换与顶部 Pixivision 横向特辑区；瀑布流支持预加载续载、底栏双击快速回顶与按账号隔离的本地离线首屏缓存（`HomeFeedCache`），未登录时提供精选发现流兜底。
+- **首页推荐流**：支持「推荐」「排行榜」「关注新作」三大分区及顶栏悬浮多选分类菜单（插画 / 漫画 / 小说，默认插画与漫画），排行榜支持今日 / 本周 / 本月 / 新人维度切换与顶部 Pixivision 横向特辑区；瀑布流支持画质分级加载、预加载续载、底栏双击快速回顶与按账号隔离的本地离线首屏缓存（`HomeFeedCache`），未登录时提供精选发现流兜底。
 - **搜索与标签专题浏览**：支持关键词、精确标签与作者搜索（登录态可用），识别 PID 与 Pixiv 作品/小说/作者网页链接直达；结果页通过顶栏悬浮菜单切换作品分类、发布排序（最新 / 最早）与内容分级（全部 / 全年龄 / R-18）；标签搜索顶部展示包含官方 Pixpedia 封面、英文译名、作品总数与「收藏标签」凝光按钮的同心圆角信息卡；本地搜索历史支持基于 COUI 双主体融球（`couiFloatingPair`）的液滴粘滞左滑删除、类别筛选与二次确认清空。
-- **插画 / 漫画详情与大图查看器**：支持作品页码滑动、标签跳转、作者详情与关注状态同步；全屏大图查看器支持纵向连续浏览与左右翻页切换、双指/双击缩放，以及单张或全部原图保存至系统 `Download` 目录。
-- **小说详情、系列与沉浸式阅读器**：支持字数与阅读时长估算、官方系列上下话连读与章节目录、`[chapter:]` / `[newpage]` / `[[rb:]]` / 内嵌插图排版；阅读器内置「系统 / 象牙纸 / 护眼绿 / 暗夜」四套纸面主题、滚动与精确分页双模式、字号/字重/行距/首行缩进调节、进度自动保存与 TXT 全文导出。
-- **个人域、设置与关于**：支持官方网页登录（WebView）、云端收藏同步与浏览历史管理；支持应用内实时切换语言（跟随系统 / 简体中文 / 繁體中文（香港） / English）、主题外观（跟随系统 / 浅色 / 深色）以及「惯用左手」悬浮操作栏适配；「关于」页面展示项目、开发者档案、开源许可原文、用户协议、版权免责及社区交流入口（GitHub 仓库 / Telegram 群组）。
+- **插画 / 漫画详情、作者主页与大图查看器**：统一作品、小说、特辑与作者副标题栏样式，支持点击复制 PID / UID 与发布时间展示；作者主页支持封面大图卡片与漫画独立分页加载；全屏大图查看器支持纵向连续浏览与左右翻页切换、双指/双击缩放，以及单张或全部原图保存至系统 `Download` 目录或用户通过系统文件选择器授权的自定义目录。
+- **小说详情、系列与沉浸式阅读器**：支持字数与阅读时长估算、官方系列上下话连读与章节目录、`[chapter:]` / `[newpage]` / `[[rb:]]` / 内嵌插图排版；阅读器内置半屏排版设定面板，支持「系统 / 象牙纸 / 护眼绿 / 暗夜」四套纸面主题、滚动与精确分页双模式、A-/A+ 字号微调、字重/行距/首行缩进调节、进度自动保存与 TXT 全文导出。
+- **个人域、设置与关于**：支持官方网页登录（WebView）、云端公开/非公开收藏切换、瀑布流/列表视图切换与左滑转私/公开管理，以及浏览历史管理；支持应用内实时切换语言（跟随系统 / 简体中文 / 繁體中文（香港） / English）、主题外观（跟随系统 / 浅色 / 深色）、「惯用左手」适配、自定义下载目录与自定义作品/作者分享格式模板；「关于」页面提供开发团队资料、版本更新检测与一键下载安装（GitHub Releases）、开源许可原文、用户协议、版权免责及社区交流入口。
 
 ---
 
 ## 隐私、安全与合规设计
 
 - **启动隐私门禁**：首次启动须确认用户协议与隐私声明后才放行网络加载；拒绝则退出应用。
-- **会话凭证加密与零备份**：通过官方 WebView 登录，应用不读取或保存账号密码；登录 Cookie 通过 `AndroidKeyStore`（AES-256-GCM）加密后存储在私有存储中，退出登录时同步清除本地 Session、WebView 会话、账号缓存与图片内存/磁盘缓存；关闭 `allowBackup` 与跨设备云端数据迁移（`dataExtractionRules`）。
-- **网络域边界隔离**：Pixiv 会话 Cookie 仅发送至 Pixiv 官方 HTTPS 域名，跨站重定向时自动剥离 `Cookie`、`Referer` 与 `Accept-Language`；「关于」页展示开发者公开资料使用无状态独立客户端匿名访问 GitHub（`api.github.com` / `avatars.githubusercontent.com`），不携带 Pixiv `Referer`、Cookie 或语言/设备标识头；标签收藏等本地偏好仅保存在本机私有存储。
-- **开源协议内置展示**：应用内「设置 → 关于 → 开放源代码许可」提供所有运行时第三方组件（包括 `COUI-Kit`、`Kotlin / Coroutines / Serialization`、`Compose Multiplatform`、`AndroidX`、`Accompanist`、`OkHttp`、`Okio`、`Coil`、`JSpecify`、`Guava` 与 `JetBrains Annotations`）的许可信息及协议原文，完整说明亦可见根目录 [`NOTICE`](NOTICE)。
+- **会话凭证加密与零备份**：通过官方 WebView 登录，应用不读取或保存账号密码；登录 Cookie 通过 `AndroidKeyStore`（AES-256-GCM）加密后存储在私有存储中，退出登录时同步清除本地 Session、WebView 会话、本地收藏与关注缓存、账号缓存及图片/更新缓存；关闭 `allowBackup` 与跨设备云端数据迁移（`dataExtractionRules`）。
+- **网络域边界隔离**：Pixiv 会话 Cookie 仅发送至 Pixiv 官方 HTTPS 域名，跨站重定向时自动剥离 `Cookie`、`Referer` 与 `Accept-Language`；「关于」页展示开发者公开资料与点击「检查更新」时使用无状态独立客户端（`AppUpdateService.publicHttp`）匿名只读访问 GitHub（`api.github.com` / `github.com` / `*.githubusercontent.com`），不携带 Pixiv `Referer`、Cookie 或语言/设备标识头；标签收藏与分享模板等本地偏好仅保存在本机私有存储。
+- **开源协议内置展示**：应用内「设置 → 关于 → 开放源代码许可」提供所有运行时第三方组件（包括 `COUI-Kit`、`Kotlin / Coroutines / Serialization`、`Compose Multiplatform`、`AndroidX`、`Accompanist`、`OkHttp`、`Okio`、`Coil`、`JSpecify`、`Guava`、`JetBrains Annotations` 与 `Material Icons (Vectors)`）的许可信息及协议原文，完整说明亦可见根目录 [`NOTICE`](NOTICE)。
 
 ---
 

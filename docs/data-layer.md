@@ -9,14 +9,16 @@
 | `PixivApi` | `net/PixivApi.kt` | Pixiv Web Ajax 客户端，支持注入 `baseUrl` 与 `cookieProvider` 以便测试与隔离 |
 | `PixivException` | `net/PixivApi.kt` | 传输或服务端异常（资源不存在时返回 `null`） |
 | `PixivisionParser` | `net/PixivisionParser.kt` | Pixivision 特辑列表与详情页 HTML 解析器 |
+| `AppUpdateService` | `net/AppUpdateService.kt` | GitHub Releases 匿名版本检查与 APK 下载服务（仅限官方 GitHub 域名，零 Cookie/Referer） |
 | `Session` / `SessionHolder` | `net/Session.kt` | 会话凭证与登录态持有器 |
 | `EngagementRepository` | `repo/EngagementRepository.kt` | 收藏与关注状态双向同步仓库及事件流 |
-| `SettingsStore` | `store/SettingsStore.kt` | 加密会话存储、R-18、语言、外观、惯用左手偏好与历史记录管理 |
+| `SettingsStore` | `store/SettingsStore.kt` | 加密会话存储、R-18、语言、外观、自定义下载目录与分享格式偏好、历史记录管理 |
 | `ReadingStore` | `store/ReadingStore.kt` | 小说阅读进度与书签持久化（最多保留 60 部） |
 | `FavoriteStore` | `store/FavoriteStore.kt` | 本地与云端收藏 / 关注状态辅助存储 |
 | `HomeFeedCache` | `store/HomeFeedCache.kt` | 首页离线首屏缓存（按账号隔离） |
 | `KeyValueStore` | `store/KeyValueStore.kt` | 键值存储抽象（生产实现支持注入加密委托，测试使用内存实现） |
-| `ImageDownloader` | `media/ImageDownloader.kt` | 原图与小说 TXT 导出写入系统 `Download` 目录（基于 `MediaStore`） |
+| `ImageDownloader` | `media/ImageDownloader.kt` | 原图与小说 TXT 导出（默认写入系统 `Download` 目录，或经 SAF 写入用户自选目录） |
+| `ShareFormat` | `model/ShareFormat.kt` | 作品与作者自定义分享文本模板及变量渲染器 |
 | `SearchIntentParser` | `search/SearchIntent.kt` | PID、Pixiv 链接、作者链接与关键词解析分流器 |
 | `HomeFeed` | `model/Feed.kt` | 首页推荐、榜单与关注流数据模型 |
 | `NovelBlocks` | `model/NovelContent.kt` | 小说正文语法切块与内嵌插图提取 |

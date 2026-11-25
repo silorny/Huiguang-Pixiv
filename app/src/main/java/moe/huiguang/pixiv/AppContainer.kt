@@ -42,7 +42,10 @@ class AppContainer(context: Context) {
     val reading: ReadingStore = ReadingStore(SharedPreferencesStore(readingPrefs))
 
     val api: PixivApi = PixivApi(debugLogging = BuildConfig.DEBUG)
-    val downloads: ImageDownloader = ImageDownloader(api.client)
+    val downloads: ImageDownloader = ImageDownloader(
+        client = api.client,
+        downloadTreeUriProvider = { settings.current.downloadTreeUri },
+    )
 
     /** Keeps the last few search result pages so rotation never refetches them. */
     val searchCache: SearchResultsCache = SearchResultsCache()
@@ -91,11 +94,13 @@ class AppContainer(context: Context) {
         homeFeedCache.clear()
         imageLoader.memoryCache?.clear()
         imageLoader.diskCache?.clear()
+        runCatching { app.cacheDir.resolve("updates").deleteRecursively() }
     }
 
     /** Clears stored session, WebView cookies/storage, and session-scoped caches. */
     fun logout() {
         settings.logout()
+        favorites.clear()
         engagement.clear()
         api.clearSeriesCache()
         selfProfileCache.clear()
@@ -105,6 +110,7 @@ class AppContainer(context: Context) {
         homeFeedCache.clear()
         imageLoader.memoryCache?.clear()
         imageLoader.diskCache?.clear()
+        runCatching { app.cacheDir.resolve("updates").deleteRecursively() }
         runCatching {
             CookieManager.getInstance().apply {
                 removeAllCookies(null)

@@ -83,6 +83,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.model.NovelBlocks
 import moe.huiguang.pixiv.data.model.NovelDetail
+import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.repo.EngagementEvent
 import moe.huiguang.pixiv.data.repo.EngagementKind
@@ -100,6 +101,7 @@ import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.ui.common.IntroCard
 import moe.huiguang.pixiv.ui.common.LinkedWorksSection
 import moe.huiguang.pixiv.ui.common.SeriesSection
+import moe.huiguang.pixiv.ui.common.WorkMetaHeader
 import moe.huiguang.pixiv.ui.detail.plainCaption
 
 /**
@@ -398,6 +400,7 @@ fun NovelDetailScreen(
             }
         }
 
+        val defaultWorkTemplate = stringResource(R.string.share_format_default_work)
         NovelTopBar(
             backdrop = backdrop,
             dark = effectDark,
@@ -418,9 +421,38 @@ fun NovelDetailScreen(
             },
             onCopyLink = {
                 current?.let { work ->
+                    val shareText = ShareFormatter.formatWork(
+                        template = settingsState.workShareFormat,
+                        title = work.title,
+                        userName = work.userName,
+                        userId = work.userId,
+                        illustId = work.id,
+                        url = PixivApi.NOVEL_PAGE_URL + work.id,
+                        tags = work.tags,
+                        fallbackTemplate = defaultWorkTemplate,
+                    )
                     val cm = context.getSystemService(ClipboardManager::class.java)
-                    cm?.setPrimaryClip(ClipData.newPlainText("pixiv", PixivApi.NOVEL_PAGE_URL + work.id))
+                    cm?.setPrimaryClip(ClipData.newPlainText("pixiv", shareText))
                     Toast.makeText(context, resources.getString(R.string.detail_link_copied), Toast.LENGTH_SHORT).show()
+                }
+            },
+            onShare = {
+                current?.let { work ->
+                    val shareText = ShareFormatter.formatWork(
+                        template = settingsState.workShareFormat,
+                        title = work.title,
+                        userName = work.userName,
+                        userId = work.userId,
+                        illustId = work.id,
+                        url = PixivApi.NOVEL_PAGE_URL + work.id,
+                        tags = work.tags,
+                        fallbackTemplate = defaultWorkTemplate,
+                    )
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    }
+                    context.startActivity(Intent.createChooser(send, null))
                 }
             },
         )
@@ -485,6 +517,7 @@ private fun NovelTopBar(
     onExport: () -> Unit,
     onOpenBrowser: () -> Unit,
     onCopyLink: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val barColors = CouiTopAppBarDefaults.colors(dark = CouiTheme.isDark)
     val density = LocalDensity.current
@@ -557,6 +590,7 @@ private fun NovelTopBar(
                             CouiMenuItem(value = 1, text = stringResource(R.string.novel_export_txt)),
                             CouiMenuItem(value = 2, text = stringResource(R.string.detail_open_browser)),
                             CouiMenuItem(value = 3, text = stringResource(R.string.detail_copy_link)),
+                            CouiMenuItem(value = 4, text = stringResource(R.string.detail_action_share)),
                         ),
                         onItemClick = { item ->
                             menuExpanded = false
@@ -565,6 +599,7 @@ private fun NovelTopBar(
                                 1 -> onExport()
                                 2 -> onOpenBrowser()
                                 3 -> onCopyLink()
+                                4 -> onShare()
                             }
                         },
                     )
@@ -646,15 +681,11 @@ private fun NovelDetailContent(
             }
         }
 
-        // Type + PID sits below the cover, above the author.
-        Text(
-            text = stringResource(
-                R.string.detail_type_pid,
-                stringResource(R.string.filter_novel),
-                novel.id,
-            ),
-            kind = CouiTextKind.ItemSummary,
-            color = colors.summary,
+        // Type + PID + publish date sits below the cover, above the author.
+        WorkMetaHeader(
+            typeLabel = stringResource(R.string.filter_novel),
+            id = novel.id,
+            createDate = novel.createDate,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
 

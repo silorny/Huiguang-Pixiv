@@ -3,6 +3,10 @@ package moe.huiguang.pixiv.ui.home
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +39,7 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<HomeUiState>(
-        cache.load(initialOwner)?.let { HomeUiState.Content(it) } ?: HomeUiState.Loading,
+        cache.load(initialOwner)?.let { HomeUiState.Content(it.deduplicated()) } ?: HomeUiState.Loading,
     )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
@@ -80,6 +84,8 @@ class HomeViewModel(
     private var loadedKey: String? = null
     private var owner: String? = initialOwner
     private var inFlight = false
+    private var loadJob: Job? = null
+    private val bucketJobs = HashMap<Pair<Int, Int>, Job>()
     /** A cached feed paints instantly, then refreshes once per process. */
     private var refreshPending = _state.value is HomeUiState.Content
 
@@ -101,9 +107,13 @@ class HomeViewModel(
     fun refresh(sessionId: String?) {
         owner = sessionId
         refreshPending = false
+        loadJob?.cancel()
+        bucketJobs.values.forEach { it.cancel() }
+        bucketJobs.clear()
         pageByBucket.clear()
         dryBatches.clear()
         discoveryFallbackCursor = 0
+        _loadingMore.value = emptySet()
         _rankingBuckets.value = emptyMap()
         _rankingErrors.value = emptyMap()
         _loadMoreErrors.value = emptySet()
@@ -119,15 +129,16 @@ class HomeViewModel(
         _rankingErrors.value = _rankingErrors.value - tab
         if (forceRetry) _endReached.value = _endReached.value - bucket
         _loadingMore.value = _loadingMore.value + bucket
-        viewModelScope.launch {
+        bucketJobs[bucket] = viewModelScope.launch {
             runCatching { api.homeSectionMore(section = 1, category = tab, page = 1) }
                 .onSuccess { fetched ->
+                    val unique = fetched.distinctBy { it.category to it.id }
                     if (BuildConfig.DEBUG) {
-                        Log.d("HuiguangHome", "ranking tab=$tab page=1 count=${fetched.size}")
+                        Log.d("HuiguangHome", "ranking tab=$tab page=1 count=${unique.size}")
                     }
-                    _rankingBuckets.value = _rankingBuckets.value + (tab to fetched)
+                    _rankingBuckets.value = _rankingBuckets.value + (tab to unique)
                     pageByBucket[bucket] = 1
-                    if (fetched.isEmpty()) _endReached.value = _endReached.value + bucket
+                    if (unique.isEmpty()) _endReached.value = _endReached.value + bucket
                 }
                 .onFailure { e ->
                     if (BuildConfig.DEBUG) {
@@ -154,51 +165,103 @@ class HomeViewModel(
         val nextPage = (pageByBucket[bucket] ?: 1) + 1
         _loadingMore.value = _loadingMore.value + bucket
 
-        viewModelScope.launch {
-            val result = runCatching {
-                fetchSectionBatch(section, category, nextPage, current)
-            }
-            result.onSuccess { fetched ->
-                val latest = (_state.value as? HomeUiState.Content)?.feed ?: current
-                val targetList = when {
-                    section == 1 && category == 0 -> latest.ranking
-                    section == 1 -> _rankingBuckets.value[category].orEmpty()
-                    section == 2 && category == 3 -> latest.novelFollowing
-                    section == 2 -> latest.following
-                    category == 3 -> latest.novelRecommended
-                    else -> latest.recommended
+        bucketJobs[bucket] = viewModelScope.launch {
+            if (section == 1) {
+                val result = runCatching {
+                    fetchSectionBatch(section = 1, category = category, nextPage = nextPage, feed = current)
                 }
-                var fresh = filterFresh(targetList, fetched)
-                // If Pixiv discovery repeats existing items, seamlessly draw from tags/rankings
-                // so endless browsing in Home Recommended doesn't stall early.
-                if (fresh.isEmpty() && section == 0 && category != 3) {
-                    val supplement = runCatching { fetchDiscoverySupplement(latest) }.getOrDefault(emptyList())
-                    fresh = filterFresh(targetList, supplement)
-                }
-                if (fresh.isNotEmpty()) {
-                    dryBatches[bucket] = 0
-                    pageByBucket[bucket] = nextPage
-                    if (section == 1 && category != 0) {
-                        _rankingBuckets.value = _rankingBuckets.value + (category to (targetList + fresh))
+                result.onSuccess { fetched ->
+                    val latest = (_state.value as? HomeUiState.Content)?.feed ?: current
+                    val targetList = if (category == 0) latest.ranking else _rankingBuckets.value[category].orEmpty()
+                    val fresh = filterFresh(targetList, fetched)
+                    if (fresh.isNotEmpty()) {
+                        dryBatches[bucket] = 0
+                        pageByBucket[bucket] = nextPage
+                        if (category != 0) {
+                            _rankingBuckets.value = _rankingBuckets.value + (category to (targetList + fresh))
+                        } else {
+                            _state.value = HomeUiState.Content(latest.copy(ranking = latest.ranking + fresh))
+                        }
                     } else {
-                        val updated = when {
-                            section == 1 -> latest.copy(ranking = latest.ranking + fresh)
-                            section == 2 && category == 3 -> latest.copy(novelFollowing = latest.novelFollowing + fresh)
-                            section == 2 -> latest.copy(following = latest.following + fresh)
-                            category == 3 -> latest.copy(novelRecommended = latest.novelRecommended + fresh)
-                            else -> latest.copy(recommended = latest.recommended + fresh)
+                        val misses = (dryBatches[bucket] ?: 0) + 1
+                        dryBatches[bucket] = misses
+                        if (fetched.isEmpty() || misses >= 3) {
+                            _endReached.value = _endReached.value + bucket
+                        }
+                    }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    _loadMoreErrors.value = _loadMoreErrors.value + bucket
+                }
+            } else {
+                val showIllust = (category and HOME_FILTER_ILLUST) != 0
+                val showManga = (category and HOME_FILTER_MANGA) != 0
+                val showNovel = (category and HOME_FILTER_NOVEL) != 0
+                val wantsArtwork = showIllust || showManga
+                val artworkApiCategory = when {
+                    showIllust && showManga -> 0
+                    showIllust -> 1
+                    else -> 2
+                }
+                val result = runCatching {
+                    coroutineScope {
+                        val artworkJob = if (wantsArtwork) {
+                            async { fetchSectionBatch(section, artworkApiCategory, nextPage, current) }
+                        } else {
+                            null
+                        }
+                        val novelJob = if (showNovel) {
+                            async { api.homeSectionMore(section, 3, nextPage) }
+                        } else {
+                            null
+                        }
+                        (artworkJob?.await().orEmpty()) to (novelJob?.await().orEmpty())
+                    }
+                }
+                result.onSuccess { (fetchedArtworks, fetchedNovels) ->
+                    val latest = (_state.value as? HomeUiState.Content)?.feed ?: current
+                    val existingArtworks = if (section == 2) latest.following else latest.recommended
+                    val existingNovels = if (section == 2) latest.novelFollowing else latest.novelRecommended
+
+                    var freshArtworks = if (wantsArtwork) filterFresh(existingArtworks, fetchedArtworks) else emptyList()
+                    if (wantsArtwork && freshArtworks.isEmpty() && section == 0) {
+                        val supplement = runCatching { fetchDiscoverySupplement(latest) }.getOrDefault(emptyList())
+                        val filteredSupplement = when {
+                            showIllust && !showManga -> supplement.filter { it.category == SearchCategory.ILLUST }
+                            showManga && !showIllust -> supplement.filter { it.category == SearchCategory.MANGA }
+                            else -> supplement
+                        }
+                        freshArtworks = filterFresh(existingArtworks, filteredSupplement)
+                    }
+                    val freshNovels = if (showNovel) filterFresh(existingNovels, fetchedNovels) else emptyList()
+
+                    if (freshArtworks.isNotEmpty() || freshNovels.isNotEmpty()) {
+                        dryBatches[bucket] = 0
+                        pageByBucket[bucket] = nextPage
+                        val updated = if (section == 2) {
+                            latest.copy(
+                                following = latest.following + freshArtworks,
+                                novelFollowing = latest.novelFollowing + freshNovels,
+                            )
+                        } else {
+                            latest.copy(
+                                recommended = latest.recommended + freshArtworks,
+                                novelRecommended = latest.novelRecommended + freshNovels,
+                            )
                         }
                         _state.value = HomeUiState.Content(updated)
+                    } else {
+                        val misses = (dryBatches[bucket] ?: 0) + 1
+                        dryBatches[bucket] = misses
+                        val emptyFetch = fetchedArtworks.isEmpty() && fetchedNovels.isEmpty()
+                        if (emptyFetch || misses >= 3 || section != 0) {
+                            _endReached.value = _endReached.value + bucket
+                        }
                     }
-                } else {
-                    val misses = (dryBatches[bucket] ?: 0) + 1
-                    dryBatches[bucket] = misses
-                    if (fetched.isEmpty() || misses >= 3 || section != 0) {
-                        _endReached.value = _endReached.value + bucket
-                    }
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    _loadMoreErrors.value = _loadMoreErrors.value + bucket
                 }
-            }.onFailure {
-                _loadMoreErrors.value = _loadMoreErrors.value + bucket
             }
             _loadingMore.value = _loadingMore.value - bucket
         }
@@ -249,15 +312,17 @@ class HomeViewModel(
         inFlight = true
         if (manual) _refreshing.value = true
         val key = loadedKey
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             if (_state.value !is HomeUiState.Content) _state.value = HomeUiState.Loading
-            val result = runCatching { api.homeFeed() ?: api.fallbackFeed() }
+            val result = runCatching { (api.homeFeed() ?: api.fallbackFeed()).deduplicated() }
             result.onSuccess { feed ->
                 cache.save(owner, feed)
                 _recommendedHeadCutoff.value = feed.recommended.size
                 _followingHeadCutoff.value = feed.following.size
                 _state.value = HomeUiState.Content(feed)
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 if (_state.value !is HomeUiState.Content) {
                     _state.value = HomeUiState.Error(error.message.orEmpty())
                 }
@@ -274,7 +339,16 @@ class HomeViewModel(
 
         fun filterFresh(existing: List<SearchItem>, fetched: List<SearchItem>): List<SearchItem> {
             val known = existing.mapTo(HashSet()) { it.category to it.id }
-            return fetched.filter { (it.category to it.id) !in known }
+            return fetched.filter { known.add(it.category to it.id) }
         }
+
+        fun HomeFeed.deduplicated(): HomeFeed = copy(
+            recommended = recommended.distinctBy { it.category to it.id },
+            ranking = ranking.distinctBy { it.category to it.id },
+            following = following.distinctBy { it.category to it.id },
+            novelRecommended = novelRecommended.distinctBy { it.category to it.id },
+            novelFollowing = novelFollowing.distinctBy { it.category to it.id },
+            pixivision = pixivision.distinctBy { it.id },
+        )
     }
 }

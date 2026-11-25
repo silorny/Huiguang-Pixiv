@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +65,7 @@ fun GlowChip(
                 color = if (selected) Color.White else colors.title,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

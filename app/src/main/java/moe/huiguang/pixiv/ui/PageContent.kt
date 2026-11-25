@@ -28,6 +28,7 @@ import moe.huiguang.pixiv.ui.reader.ReaderScreen
 import moe.huiguang.pixiv.ui.search.SearchResultsScreen
 import moe.huiguang.pixiv.ui.series.SeriesScreen
 import moe.huiguang.pixiv.ui.settings.SettingsScreen
+import moe.huiguang.pixiv.ui.settings.ShareFormatScreen
 import moe.huiguang.pixiv.ui.viewer.ViewerScreen
 
 /**
@@ -175,7 +176,13 @@ fun PageContent(
                 onBack = onBack,
                 onOpenAbout = { onOpen(Route.About) },
                 onClearCaches = { container.clearCaches() },
+                onOpenShareFormat = { onOpen(Route.ShareFormat) },
                 onLoggedOut = { container.logout() },
+            )
+
+            Route.ShareFormat -> ShareFormatScreen(
+                settings = container.settings,
+                onBack = onBack,
             )
 
             Route.History -> HistoryScreen(
@@ -197,6 +204,7 @@ fun PageContent(
             Route.About -> AboutScreen(
                 onBack = onBack,
                 onOpenDoc = { doc -> onOpen(Route.AboutDoc(doc)) },
+                settings = container.settings,
             )
 
             is Route.AboutDoc -> AboutDocScreen(

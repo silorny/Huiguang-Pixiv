@@ -77,8 +77,8 @@ fun IntroCard(
 }
 
 /**
- * Four-line caption with an expand/collapse blue [GlowChip] affordance,
- * shared by the artwork, novel, author, and pixivision detail pages.
+ * Collapsible text block with a blue COUI [GlowChip] expand/collapse affordance,
+ * shared by detail cards and the update changelog card.
  */
 @Composable
 fun ExpandableText(
@@ -88,6 +88,8 @@ fun ExpandableText(
     collapsedLines: Int = 4,
     backdrop: CouiBackdrop? = null,
     dark: Boolean = CouiTheme.isDark,
+    expandLabel: String = stringResource(R.string.detail_expand),
+    collapseLabel: String = stringResource(R.string.detail_collapse),
 ) {
     var expanded by remember(text) { mutableStateOf(false) }
     var canExpand by remember(text) { mutableStateOf(false) }
@@ -104,22 +106,22 @@ fun ExpandableText(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
             onTextLayout = { result ->
-                if (!expanded && result.hasVisualOverflow) {
-                    canExpand = true
+                if (!expanded) {
+                    canExpand = result.hasVisualOverflow
                 }
             },
         )
-        if (canExpand || text.length > 80) {
+        if (canExpand) {
             Spacer(Modifier.height(10.dp))
             val chipBackdrop = backdrop ?: rememberCouiBackdrop()
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
                 horizontalArrangement = Arrangement.End,
             ) {
                 GlowChip(
-                    text = stringResource(
-                        if (expanded) R.string.detail_collapse else R.string.detail_expand,
-                    ),
+                    text = if (expanded) collapseLabel else expandLabel,
                     selected = true,
                     onClick = { expanded = !expanded },
                     backdrop = chipBackdrop,

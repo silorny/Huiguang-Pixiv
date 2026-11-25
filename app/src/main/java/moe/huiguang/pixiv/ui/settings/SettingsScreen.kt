@@ -1,5 +1,9 @@
 package moe.huiguang.pixiv.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +43,7 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.R
+import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.store.AppLanguage
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.data.store.ThemeMode
@@ -54,6 +59,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenAbout: () -> Unit,
     onClearCaches: () -> Unit,
+    onOpenShareFormat: () -> Unit = {},
     onLoggedOut: () -> Unit = {},
 ) {
     val dark = CouiTheme.isDark
@@ -87,6 +93,18 @@ fun SettingsScreen(
     var confirmClear by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var cleared by remember { mutableStateOf(false) }
+
+    val downloadDirPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, flags)
+        }
+        val raw = uri.toString()
+        settings.setDownloadTreeUri(if (ImageDownloader.isDefaultDownloadUri(raw)) "" else raw)
+    }
 
     Box(
         Modifier
@@ -211,9 +229,48 @@ fun SettingsScreen(
                         checked = state.leftHanded,
                         onCheckedChange = { settings.setLeftHanded(it) },
                     )
+                    Divider()
+                    Item(
+                        onClick = onOpenShareFormat,
+                        trailing = { NextChevron() },
+                        summary = {
+                            Text(
+                                text = stringResource(R.string.settings_share_format_summary),
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.summary,
+                            )
+                        },
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_share_format),
+                            kind = CouiTextKind.ItemTitle,
+                            color = colors.title,
+                        )
+                    }
                 }
 
                 Group(title = stringResource(R.string.settings_storage)) {
+                    Item(
+                        onClick = {
+                            val initial = state.downloadTreeUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
+                            downloadDirPicker.launch(initial)
+                        },
+                        trailing = { NextChevron() },
+                        summary = {
+                            Text(
+                                text = ImageDownloader.formatTreeUriPath(state.downloadTreeUri),
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.summary,
+                            )
+                        },
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_download_path),
+                            kind = CouiTextKind.ItemTitle,
+                            color = colors.title,
+                        )
+                    }
+                    Divider()
                     Item(
                         onClick = { confirmClear = true },
                         trailing = { NextChevron() },

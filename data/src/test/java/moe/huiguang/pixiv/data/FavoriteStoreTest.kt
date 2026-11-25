@@ -65,4 +65,22 @@ class FavoriteStoreTest {
         store.remove("1")
         assertFalse(FavoriteStore(kv).isFavorite("1"))
     }
+
+    @Test
+    fun `clear wipes favourites and followed authors across instances`() {
+        val kv = InMemoryKeyValueStore()
+        val store = FavoriteStore(kv)
+        store.toggle(entry("1"))
+        store.setFollowed("u1", true)
+        assertTrue(store.isFavorite("1"))
+        assertTrue(store.isFollowed("u1"))
+
+        store.clear()
+        assertTrue(store.items.value.isEmpty())
+        assertTrue(store.followedAuthors.value.isEmpty())
+
+        val reloaded = FavoriteStore(kv)
+        assertTrue(reloaded.items.value.isEmpty())
+        assertTrue(reloaded.followedAuthors.value.isEmpty())
+    }
 }

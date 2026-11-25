@@ -64,6 +64,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
@@ -80,6 +81,11 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowRgb565
+import coil3.size.Precision
+import coil3.size.Size
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import com.itos.coui.backdrop.CouiBackdrop
@@ -111,6 +117,12 @@ import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
+import moe.huiguang.pixiv.design.components.downgradeWaterfallThumbUrl
+
+internal const val HOME_FILTER_ILLUST = 1
+internal const val HOME_FILTER_MANGA = 2
+internal const val HOME_FILTER_NOVEL = 4
+internal const val DEFAULT_HOME_WORK_FILTER = HOME_FILTER_ILLUST or HOME_FILTER_MANGA
 
 @Stable
 class HomeTabState internal constructor(
@@ -138,9 +150,9 @@ class HomeTabState internal constructor(
 fun rememberHomeTabState(): HomeTabState {
     val gridStates = List(3) { rememberLazyStaggeredGridState() }
     val sectionState = rememberSaveable { mutableIntStateOf(0) }
-    val recommendedFilterState = rememberSaveable { mutableIntStateOf(0) }
+    val recommendedFilterState = rememberSaveable { mutableIntStateOf(DEFAULT_HOME_WORK_FILTER) }
     val rankingTabState = rememberSaveable { mutableIntStateOf(0) }
-    val followingFilterState = rememberSaveable { mutableIntStateOf(0) }
+    val followingFilterState = rememberSaveable { mutableIntStateOf(DEFAULT_HOME_WORK_FILTER) }
     return remember(gridStates) {
         HomeTabState(
             gridStates = gridStates,
@@ -178,12 +190,35 @@ fun HomeTopChrome(
             CouiMenuItem(5, stringResource(R.string.filter_manga), selected = rankingTab == 5),
         )
     } else {
-        val activeWorkFilter = if (section == 2) followingFilter else recommendedFilter
+        val activeWorkFilter = (if (section == 2) followingFilter else recommendedFilter)
+            .takeIf { (it and (HOME_FILTER_ILLUST or HOME_FILTER_MANGA or HOME_FILTER_NOVEL)) != 0 }
+            ?: DEFAULT_HOME_WORK_FILTER
+        val selectedCount = Integer.bitCount(activeWorkFilter)
+        val illustSelected = (activeWorkFilter and HOME_FILTER_ILLUST) != 0
+        val mangaSelected = (activeWorkFilter and HOME_FILTER_MANGA) != 0
+        val novelSelected = (activeWorkFilter and HOME_FILTER_NOVEL) != 0
         listOf(
-            CouiMenuItem(0, stringResource(R.string.filter_all), selected = activeWorkFilter == 0),
-            CouiMenuItem(1, stringResource(R.string.filter_illust), selected = activeWorkFilter == 1),
-            CouiMenuItem(2, stringResource(R.string.filter_manga), selected = activeWorkFilter == 2),
-            CouiMenuItem(3, stringResource(R.string.filter_novel), selected = activeWorkFilter == 3),
+            CouiMenuItem(
+                value = HOME_FILTER_ILLUST,
+                text = stringResource(R.string.filter_illust),
+                selected = illustSelected,
+                checked = illustSelected,
+                enabled = !(illustSelected && selectedCount == 1),
+            ),
+            CouiMenuItem(
+                value = HOME_FILTER_MANGA,
+                text = stringResource(R.string.filter_manga),
+                selected = mangaSelected,
+                checked = mangaSelected,
+                enabled = !(mangaSelected && selectedCount == 1),
+            ),
+            CouiMenuItem(
+                value = HOME_FILTER_NOVEL,
+                text = stringResource(R.string.filter_novel),
+                selected = novelSelected,
+                checked = novelSelected,
+                enabled = !(novelSelected && selectedCount == 1),
+            ),
         )
     }
     HomeOverlayHeader(
@@ -196,8 +231,14 @@ fun HomeTopChrome(
         onCategorySelected = { selectedKey ->
             when (section) {
                 1 -> tabState.rankingTab = selectedKey
-                2 -> tabState.followingFilter = selectedKey
-                else -> tabState.recommendedFilter = selectedKey
+                2 -> {
+                    val next = tabState.followingFilter xor selectedKey
+                    if (next != 0) tabState.followingFilter = next
+                }
+                else -> {
+                    val next = tabState.recommendedFilter xor selectedKey
+                    if (next != 0) tabState.recommendedFilter = next
+                }
             }
         },
         backdrop = backdrop,
@@ -406,6 +447,34 @@ fun HomeScreen(
                         val isEnd = bucket in endReached
                         val gridState = gridStates[selected]
                         val pageOverscroll = rememberCouiOverscrollEffect()
+                        val appContext = LocalContext.current
+
+                        LaunchedEffect(gridState, visible, selected, activeCategory) {
+                            if (visible.isEmpty()) return@LaunchedEffect
+                            snapshotFlow {
+                                gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            }
+                                .distinctUntilChanged()
+                                .collect { lastIndex ->
+                                    val start = (lastIndex - 2).coerceAtLeast(0)
+                                    val end = (lastIndex + 10).coerceAtMost(visible.size)
+                                    val loader = appContext.imageLoader
+                                    for (i in start until end) {
+                                        val item = visible[i]
+                                        val raw = item.thumbUrl.ifBlank { item.fullUrl }
+                                        if (raw.isBlank()) continue
+                                        val url = downgradeWaterfallThumbUrl(raw)
+                                        loader.enqueue(
+                                            ImageRequest.Builder(appContext)
+                                                .data(url)
+                                                .allowRgb565(true)
+                                                .size(Size(360, 360))
+                                                .precision(Precision.INEXACT)
+                                                .build(),
+                                        )
+                                    }
+                                }
+                        }
 
                         LaunchedEffect(gridState, selected, activeCategory, isLoadingMore, isEnd, hasLoadError) {
                             if (isEnd || isLoadingMore || hasLoadError) return@LaunchedEffect
@@ -517,6 +586,7 @@ fun HomeScreen(
                                     ArtworkCard(
                                         item = item,
                                         revealR18 = settingsState.revealR18,
+                                        lowQualityThumb = true,
                                         onClick = { onOpenWork(item) },
                                     )
                                 }
@@ -643,7 +713,7 @@ private fun HomeOverlayHeader(
     Box(Modifier.fillMaxWidth()) {
         HomeTopBarSurface(
             backdrop = backdrop,
-            alphaProvider = { collapseProgressState.value },
+            alphaProvider = { collapseProgressState.value.coerceIn(0f, 1f) },
             gradientColor = colors.background,
             statusTop = statusTop,
             appTitle = appTitle,
@@ -655,7 +725,7 @@ private fun HomeOverlayHeader(
             Modifier
                 .fillMaxWidth()
                 .layout { measurable, constraints ->
-                    val p = collapseProgressState.value
+                    val p = collapseProgressState.value.coerceIn(0f, 1f)
                     val startPx = (defaultSidePadPx + (collapsedStartPx - defaultSidePadPx) * p).toInt()
                     val endPx = (defaultSidePadPx + (collapsedEndPx - defaultSidePadPx) * p).toInt()
                     val childW = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
@@ -667,7 +737,7 @@ private fun HomeOverlayHeader(
                     }
                 }
                 .graphicsLayer {
-                    translationY = switcherShiftYPx * collapseProgressState.value
+                    translationY = switcherShiftYPx * collapseProgressState.value.coerceIn(0f, 1f)
                 },
         ) {
             SectionSwitcher(
@@ -742,7 +812,9 @@ private fun HomeTopBarSurface(
                     offset = DpOffset(0.dp, 8.dp),
                     items = categoryItems,
                     onItemClick = { item ->
-                        menuOpen = false
+                        if (item.checked == null) {
+                            menuOpen = false
+                        }
                         onCategorySelected(item.value)
                     },
                 )
@@ -915,11 +987,30 @@ internal fun filterHomeWorkStream(
     novels: List<SearchItem>,
     filter: Int,
     headCutoff: Int = artworks.size,
-): List<SearchItem> = when (filter) {
-    1 -> artworks.filter { it.category == SearchCategory.ILLUST }
-    2 -> artworks.filter { it.category == SearchCategory.MANGA }
-    3 -> novels
-    else -> interleaveHomeWorks(artworks, novels, headCutoff)
+): List<SearchItem> {
+    val mask = filter.takeIf { (it and (HOME_FILTER_ILLUST or HOME_FILTER_MANGA or HOME_FILTER_NOVEL)) != 0 }
+        ?: DEFAULT_HOME_WORK_FILTER
+    val showIllust = (mask and HOME_FILTER_ILLUST) != 0
+    val showManga = (mask and HOME_FILTER_MANGA) != 0
+    val showNovel = (mask and HOME_FILTER_NOVEL) != 0
+    val split = headCutoff.coerceIn(0, artworks.size)
+    val matchesArtwork: (SearchItem) -> Boolean = { item ->
+        (showIllust && item.category == SearchCategory.ILLUST) ||
+            (showManga && item.category == SearchCategory.MANGA)
+    }
+    val filteredArtworks = when {
+        showIllust && showManga -> artworks
+        showIllust || showManga -> artworks.filter(matchesArtwork)
+        else -> emptyList()
+    }
+    if (!showNovel) return filteredArtworks
+    if (filteredArtworks.isEmpty()) return novels
+    val filteredHeadCutoff = if (showIllust && showManga) {
+        split
+    } else {
+        artworks.take(split).count(matchesArtwork)
+    }
+    return interleaveHomeWorks(filteredArtworks, novels, filteredHeadCutoff)
 }
 
 private fun interleaveHomeWorks(

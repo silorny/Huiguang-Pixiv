@@ -75,6 +75,10 @@ data class SettingsState(
     val welcomeAccepted: Boolean = false,
     val history: List<HistoryEntry> = emptyList(),
     val favoriteTags: List<String> = emptyList(),
+    val downloadTreeUri: String = "",
+    val workShareFormat: String = "",
+    val authorShareFormat: String = "",
+    val skippedUpdateTag: String = "",
     val reader: ReaderStyle = ReaderStyle(),
 )
 
@@ -141,6 +145,53 @@ class SettingsStore(private val store: KeyValueStore) {
     fun setWelcomeAccepted(value: Boolean) {
         store.putBoolean(KEY_WELCOME_ACCEPTED, value)
         _state.value = _state.value.copy(welcomeAccepted = value)
+    }
+
+    fun setDownloadTreeUri(uri: String) {
+        val cleaned = uri.trim()
+        if (cleaned.isEmpty()) store.remove(KEY_DOWNLOAD_TREE_URI)
+        else store.putString(KEY_DOWNLOAD_TREE_URI, cleaned)
+        _state.value = _state.value.copy(downloadTreeUri = cleaned)
+    }
+
+    fun setWorkShareFormat(template: String) {
+        if (template.isEmpty()) store.remove(KEY_WORK_SHARE_FORMAT)
+        else store.putString(KEY_WORK_SHARE_FORMAT, template)
+        _state.value = _state.value.copy(workShareFormat = template)
+    }
+
+    fun resetWorkShareFormat() {
+        store.remove(KEY_WORK_SHARE_FORMAT)
+        _state.value = _state.value.copy(workShareFormat = "")
+    }
+
+    fun setAuthorShareFormat(template: String) {
+        if (template.isEmpty()) store.remove(KEY_AUTHOR_SHARE_FORMAT)
+        else store.putString(KEY_AUTHOR_SHARE_FORMAT, template)
+        _state.value = _state.value.copy(authorShareFormat = template)
+    }
+
+    fun resetAuthorShareFormat() {
+        store.remove(KEY_AUTHOR_SHARE_FORMAT)
+        _state.value = _state.value.copy(authorShareFormat = "")
+    }
+
+    fun setSkippedUpdateTag(tag: String) {
+        val cleaned = tag.trim()
+        if (cleaned.isEmpty()) store.remove(KEY_SKIPPED_UPDATE_TAG)
+        else store.putString(KEY_SKIPPED_UPDATE_TAG, cleaned)
+        _state.value = _state.value.copy(skippedUpdateTag = cleaned)
+    }
+
+    fun resetReaderStyle() {
+        store.remove(KEY_READER_FONT)
+        store.remove(KEY_READER_WEIGHT)
+        store.remove(KEY_READER_INDENT)
+        store.remove(KEY_READER_PAPER)
+        store.remove(KEY_READER_LINE_SPACING)
+        _state.value = _state.value.copy(
+            reader = ReaderStyle(paged = _state.value.reader.paged),
+        )
     }
 
     fun setReaderFontSize(size: Int) {
@@ -234,6 +285,10 @@ class SettingsStore(private val store: KeyValueStore) {
             welcomeAccepted = store.getBoolean(KEY_WELCOME_ACCEPTED, false),
             history = loadHistory(),
             favoriteTags = loadStringList(KEY_FAVORITE_TAGS),
+            downloadTreeUri = store.getString(KEY_DOWNLOAD_TREE_URI).orEmpty(),
+            workShareFormat = store.getString(KEY_WORK_SHARE_FORMAT).orEmpty(),
+            authorShareFormat = store.getString(KEY_AUTHOR_SHARE_FORMAT).orEmpty(),
+            skippedUpdateTag = store.getString(KEY_SKIPPED_UPDATE_TAG).orEmpty(),
             reader = ReaderStyle(
                 fontSize = store.getString(KEY_READER_FONT)?.toIntOrNull()?.coerceIn(MIN_FONT, MAX_FONT) ?: 17,
                 weight = store.getString(KEY_READER_WEIGHT)?.toIntOrNull() ?: 400,
@@ -320,6 +375,10 @@ class SettingsStore(private val store: KeyValueStore) {
         private const val KEY_WELCOME_ACCEPTED = "welcome_accepted"
         private const val KEY_HISTORY = "history"
         private const val KEY_FAVORITE_TAGS = "favorite_tags"
+        private const val KEY_DOWNLOAD_TREE_URI = "download_tree_uri"
+        private const val KEY_WORK_SHARE_FORMAT = "work_share_format"
+        private const val KEY_AUTHOR_SHARE_FORMAT = "author_share_format"
+        private const val KEY_SKIPPED_UPDATE_TAG = "skipped_update_tag"
         private const val KEY_READER_FONT = "reader_font_size"
         private const val KEY_READER_WEIGHT = "reader_font_weight"
         private const val KEY_READER_INDENT = "reader_indent"

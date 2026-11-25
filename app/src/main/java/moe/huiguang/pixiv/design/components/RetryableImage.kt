@@ -23,7 +23,9 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.compose.rememberConstraintsSizeResolver
 import coil3.request.ImageRequest
+import coil3.request.allowRgb565
 import coil3.size.Precision
+import coil3.size.Size
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
@@ -46,19 +48,28 @@ fun RetryableImage(
     contentScale: ContentScale = ContentScale.Crop,
     darkPlaceholder: Boolean = false,
     constrainToBounds: Boolean = true,
+    allowRgb565: Boolean = false,
+    maxDecodeSizePx: Int = 0,
 ) {
     val context = LocalContext.current
     val colors = CouiPageDefaults.themeColors()
     var attempt by remember(url) { mutableIntStateOf(0) }
     var isError by remember(url, attempt) { mutableStateOf(false) }
-    val sizeResolver = if (constrainToBounds) rememberConstraintsSizeResolver() else null
-    val request = remember(context, url, attempt, sizeResolver) {
+    val sizeResolver = if (constrainToBounds && maxDecodeSizePx <= 0) rememberConstraintsSizeResolver() else null
+    val request = remember(context, url, attempt, sizeResolver, allowRgb565, maxDecodeSizePx) {
         ImageRequest.Builder(context)
             .data(url)
+            .allowRgb565(allowRgb565)
             .apply {
-                if (sizeResolver != null) {
-                    size(sizeResolver)
-                    precision(Precision.INEXACT)
+                when {
+                    maxDecodeSizePx > 0 -> {
+                        size(Size(maxDecodeSizePx, maxDecodeSizePx))
+                        precision(Precision.INEXACT)
+                    }
+                    sizeResolver != null -> {
+                        size(sizeResolver)
+                        precision(Precision.INEXACT)
+                    }
                 }
             }
             .build()

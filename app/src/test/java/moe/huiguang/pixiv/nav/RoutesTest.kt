@@ -11,7 +11,7 @@ class RouteCodecTest {
     @Test
     fun `every route survives a round trip`() {
         val routes = listOf(
-            Route.Home, Route.Search, Route.Profile, Route.Login, Route.Settings,
+            Route.Home, Route.Search, Route.Profile, Route.Login, Route.Settings, Route.ShareFormat,
             Route.History, Route.Bookmarks, Route.About, Route.AboutDoc("licenses"),
             Route.AboutDoc("license:coui-notice"),
             Route.Detail("illust", "150930584"),
@@ -51,7 +51,7 @@ class RouteTest {
     @Test
     fun `secondary routes are pages`() {
         val pages = listOf(
-            Route.Login, Route.Settings, Route.History, Route.Bookmarks, Route.About, Route.AboutDoc("ack"),
+            Route.Login, Route.Settings, Route.ShareFormat, Route.History, Route.Bookmarks, Route.About, Route.AboutDoc("ack"),
             Route.Detail("illust", "1"), Route.Author("2"), Route.Series("illust", "3", "4"),
             Route.Reader("5"), Route.Viewer("6", 0), Route.SearchResults("q", "tag"),
         )
