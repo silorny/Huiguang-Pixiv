@@ -30,7 +30,7 @@
     <string name="profile_logged_in">已登入</string>
     <string name="profile_logout">登出</string>
     <string name="profile_logout_confirm">登出？</string>
-    <string name="profile_logout_message">登入 cookie 會從本機刪除，收藏與閱覽記錄不受影響。</string>
+    <string name="profile_logout_message">將清除本機登入 Cookie 與本機收藏、關注等帳號快取，Pixiv 雲端收藏與本機瀏覽記錄不受影響。</string>
     <string name="profile_group_content">內容</string>
     <string name="profile_r18">顯示 R-18</string>
     <string name="profile_r18_summary">需登入，且已在 pixiv 網頁端開啟「閲覧制限」</string>
@@ -256,13 +256,13 @@
     <string name="about_agreement_sec_service_title">服務性質</string>
     <string name="about_agreement_sec_service_body">「繪光」為非官方第三方 Pixiv 客戶端，僅供個人學習、技術研究與日常瀏覽使用。\n\n應用程式內展示的所有作品內容、排行榜、特輯與帳號資料均直接源自 Pixiv 官方網站，本應用程式不提供任何內容託管或分發服務。</string>
     <string name="about_agreement_sec_network_title">網絡連接與資料使用</string>
-    <string name="about_agreement_sec_network_body">本應用程式需使用網絡權限以存取 Pixiv（pixiv.net、pximg.net、embed.pixiv.net）與 Pixivision（pixivision.net）官方服務，載入作品詳情、圖片資源、小說正文、標籤封面及搜尋結果。\n\n當您主動點擊「關注作者」或「收藏作品」時，客戶端將直接向 Pixiv 官方服務發起請求並同步狀態，不會將您的互動記錄轉發至任何第三方伺服器；「收藏標籤」僅儲存在本機，不會上傳或同步至任何伺服器。\n\n當您造訪「關於」頁面或主動點擊「檢查更新」時，應用程式會透過不攜帶 Pixiv Referer、Cookie、語言偏好或任何用戶及裝置資訊的獨立純淨 HTTP 客戶端，向 GitHub（api.github.com、github.com 與 *.githubusercontent.com）發起匿名唯讀請求，用於取得開發者公開資料、版本發佈資訊或下載您確認安裝的應用程式安裝包；「關於」頁面中的專案倉庫、Telegram 交流群組及第三方開源專案主頁僅在您主動點擊後透過系統瀏覽器或對應應用程式開啟或複製連結。</string>
+    <string name="about_agreement_sec_network_body">本應用程式需使用網絡權限以存取 Pixiv（pixiv.net、pximg.net、embed.pixiv.net）與 Pixivision（pixivision.net）官方服務，載入作品詳情、圖片資源、小說正文、標籤封面及搜尋結果；登入頁面僅於官方登入 WebView 內按需載入 Pixiv 整合的第三方帳號驗證與人機驗證服務（Google、reCAPTCHA、Cloudflare、Apple、X）。\n\n當您主動點擊「關注作者」或「收藏作品」時，客戶端將直接向 Pixiv 官方服務發起請求並同步狀態，不會將您的互動記錄轉發至任何第三方伺服器；「收藏標籤」僅儲存在本機，不會上傳或同步至任何伺服器。\n\n當您造訪「關於」頁面或主動點擊「檢查更新」時，應用程式會透過不攜帶 Pixiv Referer、Cookie、語言偏好或任何用戶及裝置資訊的獨立純淨 HTTP 客戶端，向 GitHub（api.github.com、github.com 與 *.githubusercontent.com）發起匿名唯讀請求，用於取得開發者公開資料、版本發佈資訊或下載您確認安裝的應用程式安裝包；「關於」頁面中的專案倉庫、Telegram 交流群組及第三方開源專案主頁僅在您主動點擊後透過系統瀏覽器或對應應用程式開啟或複製連結。</string>
     <string name="about_agreement_sec_storage_title">本機儲存與登入憑證</string>
     <string name="about_agreement_sec_storage_body">登入過程完全透過 Pixiv 官方網頁完成，本應用程式絕不取得、讀取或儲存您的帳號密碼，僅在本機使用系統密鑰庫加密儲存用於工作階段驗證的 Cookie；登出時會同步清除本機及登入網頁中的工作階段 Cookie、本機收藏與關注快取、帳號相關快取以及圖片與更新快取。\n\n當您儲存原圖或匯出小說 TXT 檔案時，檔案預設寫入系統公開的 Download 目錄；若您在「設定 → 儲存 → 下載路徑」中透過系統檔案選擇器授權了自訂資料夾，則寫入您所選擇的目錄（可隨時恢復預設路徑）。\n\n瀏覽歷史、收藏標籤、自訂分享格式、閱讀排版、書籤進度、已跳過的更新版本號、首頁離線快取、圖片磁碟快取及點擊檢查更新後臨時下載的 APK 安裝包快取均儲存在本機應用程式私有儲存空間中，且已禁止系統備份與裝置間遷移。</string>
     <string name="about_agreement_sec_privacy_title">私隱承諾與合規使用</string>
     <string name="about_agreement_sec_privacy_body">我們不設自有後端伺服器，不採集、分析或上傳任何用戶行為資料、裝置識別碼或個人身份資訊。\n\n請合理控制請求頻率並遵守 Pixiv 社群服務條款，使用第三方客戶端所產生的帳號風控與合規風險由用戶自行承擔。</string>
     <string name="about_copyright_sec_works_title">作品與商標版權</string>
-    <string name="about_copyright_sec_works_body">「Pixiv」、「Pixivision」及相關標識與商標均歸 Pixiv Inc. 所有。\n\n本應用程式內展示的所有插畫、漫畫、小說正文、封面及配圖，其版權均歸對應原作者或權利人所有。\n\n未經原作者明確許可，請勿將下載或匯出的作品用於任何商業用途，亦請勿擅自轉載或二次發佈。</string>
+    <string name="about_copyright_sec_works_body">「Pixiv」、「Pixivision」及相關標識與商標均歸 Pixiv Inc. 所有。\n\n本應用程式內展示的所有插畫、漫畫、小說正文、封面及配圖，其版權均歸對應原作者或權利人所有。\n\n應用程式啟動圖示及專案專屬美術素材僅用於本客戶端識別展示，保留原作者與專案維護者相應權利；未經原作者明確許可，請勿將下載或匯出的作品用於任何商業用途，亦請勿擅自轉載或二次發佈。</string>
     <string name="about_copyright_sec_ui_title">設計語言與元件版權</string>
     <string name="about_copyright_sec_ui_body">本應用程式用戶介面基於開源專案 COUI-Kit 建構，遵循 MPL-2.0 協議及上游 TRADEMARKS.md 規範。\n\n「ColorOS」相關名稱與商標均歸 OPPO 廣東移動通信有限公司所有。</string>
     <string name="about_copyright_sec_disclaimer_title">免責聲明</string>
@@ -275,7 +275,7 @@
     <string name="license_notes_expand">展開</string>
     <string name="license_notes_collapse">收起</string>
     <string name="license_coui_notes">COUI-Kit（coui 與 coui-icons 0.0.1-alpha15）自有原始碼適用 Mozilla Public License 2.0（MPL-2.0），依據 MPL-2.0 第 3.2(a) 條可透過上述 GitHub 倉庫取得對應版本原始碼。其內部包含的部分 Skia 陰影幾何演算法適用 BSD-3-Clause 許可，AndroidX 搜尋向量圖示（Copyright 2025 The Android Open Source Project）適用 Apache License 2.0；其餘參考系統向量與圖像素材保留 OPPO / HeyTap / Android 原權利人權利，不因 MPL-2.0 而改變其原有許可歸屬。</string>
-    <string name="license_material_icons_notes">應用程式內部分操作向量圖示（如 ic_restart_alt、ic_check）源自 Google Material Icons（Apache License 2.0）。</string>
+    <string name="license_material_icons_notes">應用程式內操作與詳情頁內置的向量圖示（如 ic_check、ic_download、ic_export、ic_eye、ic_eye_off、ic_open_browser、ic_read_book、ic_restart_alt、ic_view_large 等）源自 Google Material Icons（Apache License 2.0）。</string>
     <string name="license_view_bsd_text">查看 Skia BSD-3-Clause 原文</string>
     <string name="license_view_coui_notice">查看 COUI-Kit NOTICE 原文</string>
     <string name="about_ack_intro">感謝以下開源專案、創作者與社群為「繪光」提供的技術基石與支援：</string>
@@ -326,6 +326,10 @@
     <string name="bookmarks_moved_private">已設為非公開收藏</string>
     <string name="bookmarks_moved_public">已設為公開收藏</string>
     <string name="author_uid_copied">已複製 UID</string>
+    <string name="author_external_link_title">開啟外部連結</string>
+    <string name="author_external_link_message">即將跳轉至第三方網頁，請注意甄別網路風險。</string>
+    <string name="author_external_link_open">開啟網頁</string>
+    <string name="author_webpage_label">個人主頁</string>
     <string name="detail_action_share">分享</string>
     <string name="settings_download_path">下載位置</string>
     <string name="settings_share_format">自訂分享格式</string>
@@ -368,5 +372,14 @@
     <string name="update_permission_install">請允許「繪光」安裝應用更新</string>
     <string name="update_download_failed">下載失敗：%1$s</string>
     <string name="update_no_apk_asset">此版本暫未附帶 APK 安裝包，將開啟 GitHub 發佈頁</string>
-    <string name="update_current_release_notes">• 首頁分類支援多選，優化瀑布流載入速度並修復深色圓角與穩定性問題\n• 個人收藏支援公開/非公開切換、瀑布流/列表切換與滑動轉私/公開\n• 統一作品/特輯/作者副標題欄（支援複製 PID/UID）並補全作者封面大圖與漫畫分頁\n• 重構小說閱讀器半屏排版設定，新增自訂下載目錄、分享格式範本與版本更新檢測</string>
+    <string name="update_signature_mismatch">安裝包簽名與目前應用程式不一致，已取消安裝並刪除檔案</string>
+    <string name="login_blocked_url">已攔截非官方登入頁面的外部跳轉</string>
+    <string name="author_bookmarks">收藏</string>
+    <string name="bookmarks_author_empty">暫無公開收藏</string>
+    <string name="detail_linked_info">關聯資訊</string>
+    <string name="detail_linked_author_role">作者</string>
+    <string name="detail_author_other_works">作者的其他作品</string>
+    <string name="detail_related_works">相關作品</string>
+    <string name="detail_current_work">當前</string>
+    <string name="update_current_release_notes">繪光 v0.1.4 更新說明\n• 作者主頁重構：頁首圖頭像融合、上滑頂欄漸顯作者名、外鏈凝光標籤、關注/好友/收藏統計及分類左右滑動順滑不重載\n• 作品詳情頁升級：簡介支援內鏈應用程式內直達、關聯資訊兼容作品與作者、「作者的其他作品」畫廊與「相關作品」瀑布流\n• 首頁與自訂分享格式支援左右滑動切換分類，補全凝光視效、語言切換防閃黑畫面及長按圓角一致性\n• 優化檢查更新彈窗頂部欄與多語言更新說明識別，並完善私隱合規、明文攔截與登出清理機制</string>
 </resources>

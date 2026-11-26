@@ -12,6 +12,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.net.PixivException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.URLDecoder
 
 /**
@@ -28,12 +30,18 @@ class ImageDownloader(
     suspend fun download(context: Context, url: String, fileName: String): String =
         withContext(Dispatchers.IO) {
             val request = Request.Builder().url(url).get().build()
-            val bytes = client.newCall(request).execute().use { response ->
+            client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw PixivException("HTTP ${response.code}")
-                response.body.bytes()
+                val expectedLength = response.body.contentLength()
+                response.body.byteStream().use { input ->
+                    writeStream(context, fileName, mimeOf(fileName)) { output ->
+                        val copied = copyStream(input, output)
+                        if (copied == 0L || (expectedLength > 0L && copied != expectedLength)) {
+                            throw PixivException("incomplete body")
+                        }
+                    }
+                }
             }
-            if (bytes.isEmpty()) throw PixivException("empty body")
-            write(context, fileName, mimeOf(fileName), bytes)
         }
 
     /** Writes plain text (a novel) alongside the images, as UTF-8. */
@@ -41,13 +49,30 @@ class ImageDownloader(
         withContext(Dispatchers.IO) {
             val bytes = text.toByteArray(Charsets.UTF_8)
             if (bytes.isEmpty()) throw PixivException("empty text")
-            write(context, fileName, "text/plain", bytes)
+            writeStream(context, fileName, "text/plain") { it.write(bytes) }
         }
 
-    private fun write(context: Context, fileName: String, mime: String, bytes: ByteArray): String {
+    private fun copyStream(input: InputStream, output: OutputStream): Long {
+        val buffer = ByteArray(16 * 1024)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+            total += read
+        }
+        return total
+    }
+
+    private fun writeStream(
+        context: Context,
+        fileName: String,
+        mime: String,
+        writer: (OutputStream) -> Unit,
+    ): String {
         val customTreeUri = downloadTreeUriProvider().trim()
         if (customTreeUri.isNotEmpty()) {
-            return writeToTree(context, Uri.parse(customTreeUri), fileName, mime, bytes)
+            return writeToTree(context, Uri.parse(customTreeUri), fileName, mime, writer)
         }
         val resolver = context.contentResolver
         val values = ContentValues().apply {
@@ -60,14 +85,14 @@ class ImageDownloader(
             ?: throw PixivException("MediaStore refused the insert")
 
         try {
-            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            resolver.openOutputStream(uri)?.use(writer)
                 ?: throw PixivException("could not open the destination")
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         } catch (e: Exception) {
             // Never leave a half-written pending entry behind.
-            resolver.delete(uri, null, null)
+            runCatching { resolver.delete(uri, null, null) }
             throw e
         }
         return "$DEFAULT_DOWNLOAD_PATH$fileName"
@@ -78,16 +103,23 @@ class ImageDownloader(
         treeUri: Uri,
         fileName: String,
         mime: String,
-        bytes: ByteArray,
+        writer: (OutputStream) -> Unit,
     ): String {
         val resolver = context.contentResolver
-        val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
-        val destUri = DocumentsContract.createDocument(resolver, parentDocUri, mime, fileName)
-            ?: throw PixivException("Could not create file in selected folder")
+        val destUri = try {
+            val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
+            val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
+            DocumentsContract.createDocument(resolver, parentDocUri, mime, fileName)
+                ?: throw PixivException("Could not create file in selected folder")
+        } catch (e: SecurityException) {
+            throw PixivException("Storage permission lost: ${e.message ?: "re-select folder"}")
+        }
         try {
-            resolver.openOutputStream(destUri)?.use { it.write(bytes) }
+            resolver.openOutputStream(destUri)?.use(writer)
                 ?: throw PixivException("could not open the destination")
+        } catch (e: SecurityException) {
+            runCatching { DocumentsContract.deleteDocument(resolver, destUri) }
+            throw PixivException("Storage permission lost: ${e.message ?: "re-select folder"}")
         } catch (e: Exception) {
             runCatching { DocumentsContract.deleteDocument(resolver, destUri) }
             throw e

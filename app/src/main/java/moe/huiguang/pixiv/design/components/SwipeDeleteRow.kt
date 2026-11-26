@@ -93,7 +93,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
-import moe.huiguang.pixiv.design.shape.g2CornerMask
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -550,8 +549,8 @@ private fun SwipeRevealSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
-                    .background(colors.card, WorkRowCardShape)
-                    .g2CornerMask(WorkRowCardShape, colors.background)
+                    .clip(WorkRowCardShape)
+                    .background(colors.card)
                     .couiButtonFeedback(dark, idleInteraction, enabled = !deleteAnimating, list = true)
                     .clickable(
                         interactionSource = idleInteraction,

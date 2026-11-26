@@ -19,10 +19,13 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -30,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -66,6 +70,7 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.TopAppBarSurface
+import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.store.SettingsStore
@@ -109,8 +114,6 @@ fun ShareFormatScreen(
     // Flat sibling backdrop so ChipTab components never form a cyclic render graph.
     val effectBackdrop = rememberCouiBackdrop()
     val windowBackdrop = rememberCouiWindowBackdrop()
-    val overscroll = rememberCouiOverscrollEffect()
-    val scroll = rememberScrollState()
     val context = LocalContext.current
     val resources = LocalResources.current
     val haptics = LocalHapticFeedback.current
@@ -123,7 +126,19 @@ fun ShareFormatScreen(
     val defaultAuthor = stringResource(R.string.share_format_default_author)
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(initialPage = tab, pageCount = { 2 })
     var confirmReset by remember { mutableStateOf(false) }
+
+    LaunchedEffect(tab) {
+        if (pagerState.currentPage != tab && pagerState.targetPage != tab) {
+            pagerState.animateScrollToPage(tab)
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { page -> if (tab != page) tab = page }
+    }
 
     var workTfv by remember {
         val initial = state.workShareFormat.ifBlank { defaultWork }
@@ -133,53 +148,9 @@ fun ShareFormatScreen(
         val initial = state.authorShareFormat.ifBlank { defaultAuthor }
         mutableStateOf(TextFieldValue(initial, TextRange(initial.length)))
     }
-    val editorFocusRequester = remember { FocusRequester() }
-    val chipRenderers = remember { List(6) { CouiFloatingRenderer.standalone() } }
-
-    val activeTfv = if (tab == 0) workTfv else authorTfv
-    val variables = if (tab == 0) WORK_VARIABLES else AUTHOR_VARIABLES
-    val previewText = if (tab == 0) {
-        ShareFormatter.formatWork(
-            template = workTfv.text,
-            title = ShareFormatter.SAMPLE_TITLE,
-            userName = ShareFormatter.SAMPLE_USER_NAME,
-            userId = ShareFormatter.SAMPLE_USER_ID,
-            illustId = ShareFormatter.SAMPLE_ILLUST_ID,
-            url = ShareFormatter.SAMPLE_WORK_URL,
-            tags = ShareFormatter.SAMPLE_TAGS,
-            fallbackTemplate = "",
-        )
-    } else {
-        ShareFormatter.formatAuthor(
-            template = authorTfv.text,
-            userName = ShareFormatter.SAMPLE_USER_NAME,
-            userId = ShareFormatter.SAMPLE_USER_ID,
-            url = ShareFormatter.SAMPLE_AUTHOR_URL,
-            fallbackTemplate = "",
-        )
-    }
-
-    fun updateActiveTemplate(next: TextFieldValue) {
-        if (tab == 0) {
-            workTfv = next
-            settings.setWorkShareFormat(next.text)
-        } else {
-            authorTfv = next
-            settings.setAuthorShareFormat(next.text)
-        }
-    }
-
-    fun insertVariable(token: String) {
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val (updatedText, nextCursor) = ShareFormatter.insertToken(
-            text = activeTfv.text,
-            selectionStart = activeTfv.selection.start,
-            selectionEnd = activeTfv.selection.end,
-            token = token,
-        )
-        updateActiveTemplate(TextFieldValue(updatedText, TextRange(nextCursor)))
-        runCatching { editorFocusRequester.requestFocus() }
-    }
+    val focusRequesters = remember { List(2) { FocusRequester() } }
+    val workChipRenderers = remember { List(6) { CouiFloatingRenderer.standalone() } }
+    val authorChipRenderers = remember { List(3) { CouiFloatingRenderer.standalone() } }
 
     Box(
         Modifier
@@ -198,93 +169,147 @@ fun ShareFormatScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .couiVerticalScroll(scroll, overscrollEffect = overscroll)
-                    .imePadding()
-                    .padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = statusTop + 56.dp + 12.dp,
-                        bottom = navBottom + 32.dp,
-                    ),
-            ) {
-                SectionSubtitle(
-                    text = stringResource(R.string.share_format_section_edit),
-                    color = colors.summary,
-                )
-                Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 128.dp)
-                        .background(colors.card, ShareCardShape)
-                        .g2CornerMask(ShareCardShape, colors.background)
-                        .padding(16.dp),
-                ) {
-                    BasicTextField(
-                        value = activeTfv,
-                        onValueChange = ::updateActiveTemplate,
-                        cursorBrush = SolidColor(colors.accent),
-                        textStyle = TextStyle(
-                            color = colors.title,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 96.dp)
-                            .focusRequester(editorFocusRequester),
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { pageIndex ->
+                val isWork = pageIndex == 0
+                val pageScroll = rememberScrollState()
+                val pageOverscroll = rememberCouiOverscrollEffect()
+                val pageTfv = if (isWork) workTfv else authorTfv
+                val variables = if (isWork) WORK_VARIABLES else AUTHOR_VARIABLES
+                val chipRenderers = if (isWork) workChipRenderers else authorChipRenderers
+                val previewText = if (isWork) {
+                    ShareFormatter.formatWork(
+                        template = workTfv.text,
+                        title = ShareFormatter.SAMPLE_TITLE,
+                        userName = ShareFormatter.SAMPLE_USER_NAME,
+                        userId = ShareFormatter.SAMPLE_USER_ID,
+                        illustId = ShareFormatter.SAMPLE_ILLUST_ID,
+                        url = ShareFormatter.SAMPLE_WORK_URL,
+                        tags = ShareFormatter.SAMPLE_TAGS,
+                        fallbackTemplate = "",
+                    )
+                } else {
+                    ShareFormatter.formatAuthor(
+                        template = authorTfv.text,
+                        userName = ShareFormatter.SAMPLE_USER_NAME,
+                        userId = ShareFormatter.SAMPLE_USER_ID,
+                        url = ShareFormatter.SAMPLE_AUTHOR_URL,
+                        fallbackTemplate = "",
                     )
                 }
 
-                Spacer(Modifier.height(18.dp))
-                SectionSubtitle(
-                    text = stringResource(R.string.share_format_section_vars),
-                    color = colors.summary,
-                )
-                Spacer(Modifier.height(10.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    variables.forEachIndexed { index, option ->
-                        ChipTab(
-                            selected = false,
-                            onClick = { insertVariable(option.token) },
-                            label = stringResource(option.labelRes),
-                            backdrop = effectBackdrop,
-                            dark = effectDark,
-                            renderer = chipRenderers[index],
-                        )
+                fun updatePageTemplate(next: TextFieldValue) {
+                    if (isWork) {
+                        workTfv = next
+                        settings.setWorkShareFormat(next.text)
+                    } else {
+                        authorTfv = next
+                        settings.setAuthorShareFormat(next.text)
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
-                SectionSubtitle(
-                    text = stringResource(R.string.share_format_section_preview),
-                    color = colors.summary,
-                )
-                Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 100.dp)
-                        .background(colors.card, ShareCardShape)
-                        .g2CornerMask(ShareCardShape, colors.background)
-                        .padding(16.dp),
-                ) {
-                    BasicText(
-                        text = previewText,
-                        style = TextStyle(
-                            color = colors.title,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
+                fun insertPageVariable(token: String) {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val (updatedText, nextCursor) = ShareFormatter.insertToken(
+                        text = pageTfv.text,
+                        selectionStart = pageTfv.selection.start,
+                        selectionEnd = pageTfv.selection.end,
+                        token = token,
                     )
+                    updatePageTemplate(TextFieldValue(updatedText, TextRange(nextCursor)))
+                    runCatching { focusRequesters[pageIndex].requestFocus() }
+                }
+
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .couiVerticalScroll(pageScroll, overscrollEffect = pageOverscroll)
+                        .imePadding()
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = statusTop + 56.dp + 12.dp,
+                            bottom = navBottom + 32.dp,
+                        ),
+                ) {
+                    SectionSubtitle(
+                        text = stringResource(R.string.share_format_section_edit),
+                        color = colors.summary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 128.dp)
+                            .background(colors.card, ShareCardShape)
+                            .g2CornerMask(ShareCardShape, colors.background)
+                            .padding(16.dp),
+                    ) {
+                        BasicTextField(
+                            value = pageTfv,
+                            onValueChange = ::updatePageTemplate,
+                            cursorBrush = SolidColor(colors.accent),
+                            textStyle = TextStyle(
+                                color = colors.title,
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 96.dp)
+                                .focusRequester(focusRequesters[pageIndex]),
+                        )
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+                    SectionSubtitle(
+                        text = stringResource(R.string.share_format_section_vars),
+                        color = colors.summary,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        variables.forEachIndexed { index, option ->
+                            ChipTab(
+                                selected = false,
+                                onClick = { insertPageVariable(option.token) },
+                                label = stringResource(option.labelRes),
+                                backdrop = effectBackdrop,
+                                dark = effectDark,
+                                renderer = chipRenderers[index],
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    SectionSubtitle(
+                        text = stringResource(R.string.share_format_section_preview),
+                        color = colors.summary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp)
+                            .background(colors.card, ShareCardShape)
+                            .g2CornerMask(ShareCardShape, colors.background)
+                            .padding(16.dp),
+                    ) {
+                        BasicText(
+                            text = previewText,
+                            style = TextStyle(
+                                color = colors.title,
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
@@ -390,6 +415,8 @@ private fun ShareFormatTopBar(
                 ),
                 selectedIndex = selectedTab,
                 onSelected = onSelectTab,
+                backdrop = backdrop,
+                dark = dark,
                 enabled = true,
             )
             CircleIconButton(

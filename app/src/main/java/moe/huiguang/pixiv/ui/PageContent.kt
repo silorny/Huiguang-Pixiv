@@ -138,6 +138,8 @@ fun PageContent(
                 engagement = container.engagement,
                 onBack = onBack,
                 onOpenWork = { kind, id -> onOpen(Route.Detail(kind, id)) },
+                onOpenProfileList = { uid, kind -> onOpen(Route.ProfileList(uid, kind)) },
+                onOpenBookmarks = { uid -> onOpen(Route.UserBookmarks(uid)) },
                 settings = container.settings,
             )
 
@@ -199,6 +201,17 @@ fun PageContent(
                 onOpen = { kind, id ->
                     onOpen(Route.Detail(if (kind == HistoryEntry.KIND_NOVEL) "novel" else "illust", id))
                 },
+            )
+
+            is Route.UserBookmarks -> BookmarksScreen(
+                api = container.api,
+                settings = container.settings,
+                favorites = container.favorites,
+                onBack = onBack,
+                onOpen = { kind, id ->
+                    onOpen(Route.Detail(if (kind == HistoryEntry.KIND_NOVEL) "novel" else "illust", id))
+                },
+                targetUserId = route.uid,
             )
 
             Route.About -> AboutScreen(

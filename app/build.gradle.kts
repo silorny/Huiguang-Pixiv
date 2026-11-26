@@ -47,8 +47,8 @@ android {
         applicationId = "moe.huiguang.pixiv"
         minSdk = 34
         targetSdk = 37
-        versionCode = 16
-        versionName = "0.1.3"
+        versionCode = 17
+        versionName = "0.1.4"
     }
 
     val releaseSigning = if (signingValues.isNotEmpty()) {

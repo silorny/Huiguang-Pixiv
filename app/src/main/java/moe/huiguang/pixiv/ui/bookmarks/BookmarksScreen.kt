@@ -81,6 +81,7 @@ import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.SwipeActionRow
 import moe.huiguang.pixiv.design.components.SwipeRevealController
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
+import moe.huiguang.pixiv.design.components.WorkRow
 import moe.huiguang.pixiv.design.components.WorkRowBody
 import moe.huiguang.pixiv.design.components.WorkRowListSkeleton
 import moe.huiguang.pixiv.design.components.dismissSwipeOnOutsideTap
@@ -120,6 +121,7 @@ fun BookmarksScreen(
     favorites: FavoriteStore,
     onBack: () -> Unit,
     onOpen: (String, String) -> Unit,
+    targetUserId: String? = null,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -131,12 +133,14 @@ fun BookmarksScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
+    val isOtherUser = targetUserId != null
     var visibility by rememberSaveable { mutableIntStateOf(0) } // 0 = public, 1 = private
+    val activeVisibility = if (isOtherUser) 0 else visibility
     var filter by rememberSaveable { mutableIntStateOf(0) } // 0 = all, 1 = illust, 2 = manga, 3 = novel
     var isWaterfall by rememberSaveable { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var publicFeed by remember { mutableStateOf(BookmarkFeedState()) }
-    var privateFeed by remember { mutableStateOf(BookmarkFeedState()) }
+    var publicFeed by remember(targetUserId) { mutableStateOf(BookmarkFeedState()) }
+    var privateFeed by remember(targetUserId) { mutableStateOf(BookmarkFeedState()) }
     var resumeTick by remember { mutableIntStateOf(0) }
     val swipeController = remember { SwipeRevealController() }
 
@@ -152,14 +156,16 @@ fun BookmarksScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(visibility, filter, isWaterfall) {
+    LaunchedEffect(activeVisibility, filter, isWaterfall) {
         swipeController.close()
     }
 
     val session = state.session
-    LaunchedEffect(session?.userId, visibility, resumeTick) {
-        val uid = session?.userId ?: return@LaunchedEffect
-        val privateOnly = visibility == 1
+    val effectiveUid = targetUserId ?: session?.userId
+    LaunchedEffect(effectiveUid, session?.userId, activeVisibility, resumeTick) {
+        if (session == null) return@LaunchedEffect
+        val uid = effectiveUid ?: return@LaunchedEffect
+        val privateOnly = !isOtherUser && activeVisibility == 1
         val current = if (privateOnly) privateFeed else publicFeed
         if (current.items == null) {
             if (privateOnly) privateFeed = current.copy(error = null)
@@ -187,8 +193,9 @@ fun BookmarksScreen(
     }
 
     fun loadMore(targetVisibility: Int) {
-        val uid = session?.userId ?: return
-        val privateOnly = targetVisibility == 1
+        if (session == null) return
+        val uid = effectiveUid ?: return
+        val privateOnly = !isOtherUser && targetVisibility == 1
         val current = if (privateOnly) privateFeed else publicFeed
         if (current.loadingMore || current.ended) return
         if (privateOnly) privateFeed = current.copy(loadingMore = true)
@@ -307,10 +314,10 @@ fun BookmarksScreen(
                 .background(colors.background),
         ) {
             SlideSwitcher(
-                index = visibility,
+                index = activeVisibility,
                 modifier = Modifier.fillMaxSize(),
             ) { selectedVisibility ->
-                val isPrivate = selectedVisibility == 1
+                val isPrivate = !isOtherUser && selectedVisibility == 1
                 val feed = if (isPrivate) privateFeed else publicFeed
                 val visibleItems = remember(feed.items, filter) {
                     feed.items?.filter { matchesBookmarkFilter(it, filter) }
@@ -319,6 +326,8 @@ fun BookmarksScreen(
                     session = session != null,
                     visibility = selectedVisibility,
                     onVisibilityChange = { visibility = it },
+                    showVisibilitySwitch = !isOtherUser,
+                    isOtherUser = isOtherUser,
                     isPrivate = isPrivate,
                     isWaterfall = isWaterfall,
                     revealR18 = state.revealR18,
@@ -351,6 +360,68 @@ fun BookmarksScreen(
                         dark = dark,
                         blurRadius = 20f,
                     )
+                    val menuItems = buildList {
+                        if (!isOtherUser) {
+                            add(
+                                CouiMenuItem(
+                                    value = MENU_VISIBILITY_PUBLIC,
+                                    text = stringResource(R.string.bookmarks_visibility_public),
+                                    selected = visibility == 0,
+                                ),
+                            )
+                            add(
+                                CouiMenuItem(
+                                    value = MENU_VISIBILITY_PRIVATE,
+                                    text = stringResource(R.string.bookmarks_visibility_private),
+                                    selected = visibility == 1,
+                                ),
+                            )
+                        }
+                        add(
+                            CouiMenuItem(
+                                value = MENU_LAYOUT_LIST,
+                                text = stringResource(R.string.bookmarks_layout_list),
+                                selected = !isWaterfall,
+                                dividerBefore = !isOtherUser,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = MENU_LAYOUT_WATERFALL,
+                                text = stringResource(R.string.bookmarks_layout_waterfall),
+                                selected = isWaterfall,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = MENU_FILTER_ALL,
+                                text = stringResource(R.string.filter_all),
+                                selected = filter == 0,
+                                dividerBefore = true,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = MENU_FILTER_ILLUST,
+                                text = stringResource(R.string.filter_illust),
+                                selected = filter == 1,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = MENU_FILTER_MANGA,
+                                text = stringResource(R.string.filter_manga),
+                                selected = filter == 2,
+                            ),
+                        )
+                        add(
+                            CouiMenuItem(
+                                value = MENU_FILTER_NOVEL,
+                                text = stringResource(R.string.filter_novel),
+                                selected = filter == 3,
+                            ),
+                        )
+                    }
                     Menu(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
@@ -358,50 +429,7 @@ fun BookmarksScreen(
                         headerTextAlign = TextAlign.Start,
                         modifier = Modifier.widthIn(min = 168.dp),
                         offset = DpOffset(0.dp, 8.dp),
-                        items = listOf(
-                            CouiMenuItem(
-                                value = MENU_VISIBILITY_PUBLIC,
-                                text = stringResource(R.string.bookmarks_visibility_public),
-                                selected = visibility == 0,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_VISIBILITY_PRIVATE,
-                                text = stringResource(R.string.bookmarks_visibility_private),
-                                selected = visibility == 1,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_LAYOUT_LIST,
-                                text = stringResource(R.string.bookmarks_layout_list),
-                                selected = !isWaterfall,
-                                dividerBefore = true,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_LAYOUT_WATERFALL,
-                                text = stringResource(R.string.bookmarks_layout_waterfall),
-                                selected = isWaterfall,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_FILTER_ALL,
-                                text = stringResource(R.string.filter_all),
-                                selected = filter == 0,
-                                dividerBefore = true,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_FILTER_ILLUST,
-                                text = stringResource(R.string.filter_illust),
-                                selected = filter == 1,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_FILTER_MANGA,
-                                text = stringResource(R.string.filter_manga),
-                                selected = filter == 2,
-                            ),
-                            CouiMenuItem(
-                                value = MENU_FILTER_NOVEL,
-                                text = stringResource(R.string.filter_novel),
-                                selected = filter == 3,
-                            ),
-                        ),
+                        items = menuItems,
                         onItemClick = { item ->
                             menuExpanded = false
                             when (item.value) {
@@ -428,6 +456,8 @@ private fun BookmarksContent(
     session: Boolean,
     visibility: Int,
     onVisibilityChange: (Int) -> Unit,
+    showVisibilitySwitch: Boolean,
+    isOtherUser: Boolean,
     isPrivate: Boolean,
     isWaterfall: Boolean,
     revealR18: Boolean,
@@ -474,6 +504,13 @@ private fun BookmarksContent(
         stringResource(R.string.bookmarks_visibility_public),
         stringResource(R.string.bookmarks_visibility_private),
     )
+    val emptyMessage = stringResource(
+        when {
+            isOtherUser -> R.string.bookmarks_author_empty
+            isPrivate -> R.string.bookmarks_private_empty
+            else -> R.string.bookmarks_cloud_empty
+        },
+    )
 
     when {
         !session -> EmptyHint(stringResource(R.string.bookmarks_need_login))
@@ -493,15 +530,17 @@ private fun BookmarksContent(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 12.dp,
             ) {
-                item(span = StaggeredGridItemSpan.FullLine, key = "visibility") {
-                    SegmentedControl(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        labels = visibilityLabels,
-                        selectedIndex = visibility,
-                        onSelected = onVisibilityChange,
-                    )
+                if (showVisibilitySwitch) {
+                    item(span = StaggeredGridItemSpan.FullLine, key = "visibility") {
+                        SegmentedControl(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            labels = visibilityLabels,
+                            selectedIndex = visibility,
+                            onSelected = onVisibilityChange,
+                        )
+                    }
                 }
                 when {
                     error != null -> item(span = StaggeredGridItemSpan.FullLine, key = "error") {
@@ -511,11 +550,7 @@ private fun BookmarksContent(
                         WaterfallSkeleton(topPadding = 8.dp, bottomPadding = bottomPadding)
                     }
                     items.isEmpty() -> item(span = StaggeredGridItemSpan.FullLine, key = "empty") {
-                        InlineEmptyHint(
-                            stringResource(
-                                if (isPrivate) R.string.bookmarks_private_empty else R.string.bookmarks_cloud_empty,
-                            ),
-                        )
+                        InlineEmptyHint(emptyMessage)
                     }
                     else -> {
                         items(
@@ -574,15 +609,17 @@ private fun BookmarksContent(
                     .overscroll(overscroll),
                 contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
             ) {
-                item(key = "visibility") {
-                    SegmentedControl(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        labels = visibilityLabels,
-                        selectedIndex = visibility,
-                        onSelected = onVisibilityChange,
-                    )
+                if (showVisibilitySwitch) {
+                    item(key = "visibility") {
+                        SegmentedControl(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            labels = visibilityLabels,
+                            selectedIndex = visibility,
+                            onSelected = onVisibilityChange,
+                        )
+                    }
                 }
                 when {
                     error != null -> item(key = "error") {
@@ -592,11 +629,7 @@ private fun BookmarksContent(
                         WorkRowListSkeleton(topPadding = 8.dp, bottomPadding = bottomPadding)
                     }
                     items.isEmpty() -> item(key = "empty") {
-                        InlineEmptyHint(
-                            stringResource(
-                                if (isPrivate) R.string.bookmarks_private_empty else R.string.bookmarks_cloud_empty,
-                            ),
-                        )
+                        InlineEmptyHint(emptyMessage)
                     }
                     else -> {
                         items(
@@ -604,33 +637,43 @@ private fun BookmarksContent(
                             key = { "${if (isPrivate) "priv" else "pub"}-${it.kind}-${it.id}" },
                             contentType = { "bookmarkRow" },
                         ) { item ->
-                            val rowKey = "${if (isPrivate) "priv" else "pub"}-${item.kind}-${item.id}"
-                            SwipeActionRow(
-                                rowKey = rowKey,
-                                controller = swipeController,
-                                backdrop = effectBackdrop,
-                                actionColor = actionColor,
-                                actionLabel = actionLabel,
-                                confirmActionLabel = confirmLabel,
-                                onClick = { onOpen(item.kind, item.id) },
-                                onCommit = { onToggleVisibility(item) },
-                                actionIcon = { _, _ ->
-                                    Image(
-                                        painter = painterResource(iconRes),
-                                        contentDescription = null,
-                                        colorFilter = ColorFilter.tint(Color.White),
-                                        modifier = Modifier.size(24.dp),
+                            if (showVisibilitySwitch) {
+                                val rowKey = "${if (isPrivate) "priv" else "pub"}-${item.kind}-${item.id}"
+                                SwipeActionRow(
+                                    rowKey = rowKey,
+                                    controller = swipeController,
+                                    backdrop = effectBackdrop,
+                                    actionColor = actionColor,
+                                    actionLabel = actionLabel,
+                                    confirmActionLabel = confirmLabel,
+                                    onClick = { onOpen(item.kind, item.id) },
+                                    onCommit = { onToggleVisibility(item) },
+                                    actionIcon = { _, _ ->
+                                        Image(
+                                            painter = painterResource(iconRes),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(Color.White),
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    },
+                                ) {
+                                    WorkRowBody(
+                                        thumbUrl = item.thumbUrl,
+                                        title = item.title,
+                                        author = item.userName,
+                                        meta = workMeta(item.kind, item.illustType, item.id),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
                                     )
-                                },
-                            ) {
-                                WorkRowBody(
+                                }
+                            } else {
+                                WorkRow(
                                     thumbUrl = item.thumbUrl,
                                     title = item.title,
                                     author = item.userName,
                                     meta = workMeta(item.kind, item.illustType, item.id),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(10.dp),
+                                    onClick = { onOpen(item.kind, item.id) },
                                 )
                             }
                         }

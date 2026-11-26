@@ -90,6 +90,7 @@ import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.TagChip
 import moe.huiguang.pixiv.ui.common.CategoryBadge
 import moe.huiguang.pixiv.ui.common.IntroCard
+import moe.huiguang.pixiv.ui.common.openExternalUrl
 
 private sealed interface PixivisionUiState {
     data object Loading : PixivisionUiState
@@ -400,9 +401,7 @@ fun PixivisionScreen(
             backdrop = backdrop,
             onBack = onBack,
             onOpenInBrowser = {
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(articleUrl)))
-                }
+                openExternalUrl(context, articleUrl)
             },
             onCopyLink = {
                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

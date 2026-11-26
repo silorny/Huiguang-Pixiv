@@ -102,6 +102,7 @@ class AppContainer(context: Context) {
         settings.logout()
         favorites.clear()
         engagement.clear()
+        api.clearCsrfCache()
         api.clearSeriesCache()
         selfProfileCache.clear()
         artworkCache.clear()

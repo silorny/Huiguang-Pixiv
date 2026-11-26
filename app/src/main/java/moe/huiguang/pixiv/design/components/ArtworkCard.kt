@@ -20,8 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -42,7 +42,6 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
-import moe.huiguang.pixiv.design.shape.g2CornerMask
 
 private val CardOuterShape = CachedCouiShape(20.dp, 3f)
 private val CardInnerShape = CachedCouiShape(14.dp, 3f)
@@ -93,12 +92,10 @@ fun ArtworkCard(
     val rawThumb = item.thumbUrl.ifBlank { item.fullUrl }
     val imageUrl = if (lowQualityThumb) downgradeWaterfallThumbUrl(rawThumb) else rawThumb
 
-    val opaqueCardColor = colors.card.compositeOver(colors.background)
-
     Column(
         modifier = modifier
-            .background(colors.card, CardOuterShape)
-            .g2CornerMask(CardOuterShape, colors.background)
+            .clip(CardOuterShape)
+            .background(colors.card)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -115,8 +112,8 @@ fun ArtworkCard(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio((1f / ratio).coerceIn(0.45f, 1.8f))
-                .background(colors.background)
-                .g2CornerMask(CardInnerShape, opaqueCardColor),
+                .clip(CardInnerShape)
+                .background(colors.background),
         ) {
             RetryableImage(
                 url = imageUrl,
@@ -211,6 +208,8 @@ fun ArtworkCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             )
+        } else if (!isNovel || item.description.isBlank()) {
+            Spacer(Modifier.height(4.dp))
         }
     }
 }

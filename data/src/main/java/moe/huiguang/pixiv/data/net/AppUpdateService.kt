@@ -28,6 +28,7 @@ data class AppReleaseInfo(
     val apkSizeBytes: Long,
     val htmlUrl: String,
     val isForceUpdate: Boolean = false,
+    val localizedReleaseNotes: Map<String, String> = emptyMap(),
 ) {
     val formattedSize: String
         get() = if (apkSizeBytes > 0L) {
@@ -35,6 +36,24 @@ data class AppReleaseInfo(
         } else {
             ""
         }
+
+    /**
+     * Picks the changelog matching [languageTag] (`zh-CN`, `zh-HK`, `en`, etc.),
+     * falling back cleanly across Chinese variants and then [releaseNotes].
+     */
+    fun releaseNotesFor(languageTag: String): String {
+        if (localizedReleaseNotes.isEmpty()) return releaseNotes
+        val normalized = AppUpdateService.canonicalLanguageKey(languageTag)
+        localizedReleaseNotes[normalized]?.takeIf { it.isNotBlank() }?.let { return it }
+        if (normalized == "zh-HK") {
+            localizedReleaseNotes["zh-CN"]?.takeIf { it.isNotBlank() }?.let { return it }
+        } else if (normalized == "zh-CN") {
+            localizedReleaseNotes["zh-HK"]?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return localizedReleaseNotes["en"]?.takeIf { it.isNotBlank() }
+            ?: localizedReleaseNotes.values.firstOrNull { it.isNotBlank() }
+            ?: releaseNotes
+    }
 }
 
 sealed interface UpdateCheckResult {
@@ -176,6 +195,9 @@ class AppUpdateService private constructor(
         destFile: File,
         onProgress: (downloaded: Long, total: Long) -> Unit,
     ): File = withContext(Dispatchers.IO) {
+        if (!allowLoopbackForTest && !isAllowedApkDownloadUrl(url)) {
+            throw IOException("Blocked untrusted APK download URL")
+        }
         destFile.parentFile?.mkdirs()
         val tempFile = File(destFile.parentFile, "${destFile.name}.part")
         if (tempFile.exists()) tempFile.delete()
@@ -240,11 +262,19 @@ class AppUpdateService private constructor(
             RegexOption.IGNORE_CASE,
         )
         private val HTML_LI_OPEN_RE = Regex("""<li(?:\s[^>]*)?>""", RegexOption.IGNORE_CASE)
+        private val HTML_LANG_COMMENT_RE = Regex(
+            """<!--\s*(?:lang\s*[:=]\s*)?([a-zA-Z_-]+|/lang)\s*-->""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val MARKDOWN_RULE_RE = Regex("""^(?:-{3,}|\*{3,}|_{3,})$""")
 
         val publicHttp: OkHttpClient by lazy { buildGitHubClient(allowLoopbackForTest = false) }
 
         fun isAllowedReleaseHtmlUrl(url: String): Boolean =
             url.startsWith("https://github.com/silorny/Huiguang-Pixiv/")
+
+        fun isAllowedApkDownloadUrl(url: String): Boolean =
+            url.startsWith("https://github.com/silorny/Huiguang-Pixiv/releases/download/")
 
         fun clearDownloadedUpdates(cacheDir: File) {
             runCatching { File(cacheDir, "updates").deleteRecursively() }
@@ -294,6 +324,7 @@ class AppUpdateService private constructor(
                     if (tag.isEmpty()) continue
                     val rawBody = obj.optString("body")
                     val isForce = rawBody.contains("[force-update]", ignoreCase = true)
+                    val localized = parseLocalizedChangelogs(rawBody)
                     val notes = formatChangelog(rawBody)
                     val assets = obj.optJSONArray("assets")
                     var apkUrl: String? = null
@@ -319,6 +350,7 @@ class AppUpdateService private constructor(
                             apkSizeBytes = apkSize,
                             htmlUrl = obj.optString("html_url"),
                             isForceUpdate = isForce,
+                            localizedReleaseNotes = localized,
                         ),
                     )
                 }
@@ -336,11 +368,15 @@ class AppUpdateService private constructor(
         }
 
         internal fun formatChangelog(rawBody: String): String =
-            rawBody
+            HTML_LANG_COMMENT_RE.replace(rawBody, "")
                 .replace("[force-update]", "", ignoreCase = true)
                 .lines()
                 .map { it.trim() }
-                .filter { it.isNotEmpty() }
+                .filter {
+                    it.isNotEmpty() &&
+                        !(it.startsWith("[__LANG_MARKER__:") && it.endsWith("]")) &&
+                        !MARKDOWN_RULE_RE.matches(it)
+                }
                 .joinToString("\n") { line ->
                     val stripped = line.removePrefix("#").trimStart('#', ' ')
                     when {
@@ -349,6 +385,114 @@ class AppUpdateService private constructor(
                         else -> stripped
                     }
                 }
+
+        internal fun canonicalLanguageKey(languageTag: String): String {
+            val normalized = languageTag.trim().replace('_', '-').lowercase(Locale.US)
+            return when {
+                normalized.startsWith("en") -> "en"
+                normalized == "zh-hant" ||
+                    normalized.startsWith("zh-hant-") ||
+                    normalized.startsWith("zh-hk") ||
+                    normalized.startsWith("zh-tw") ||
+                    normalized.startsWith("zh-mo") -> "zh-HK"
+                normalized.startsWith("zh") -> "zh-CN"
+                else -> normalized.ifEmpty { "zh-CN" }
+            }
+        }
+
+        internal fun parseLocalizedChangelogs(rawBody: String): Map<String, String> {
+            val prepared = HTML_LANG_COMMENT_RE.replace(rawBody) { match ->
+                "\n[__LANG_MARKER__:${match.groupValues[1]}]\n"
+            }
+            val buckets = linkedMapOf<String, MutableList<String>>()
+            var currentLang: String? = null
+            for (rawLine in prepared.lines()) {
+                val trimmed = rawLine.trim()
+                if (trimmed.isEmpty()) {
+                    currentLang?.let { buckets.getOrPut(it) { mutableListOf() }.add("") }
+                    continue
+                }
+                if (trimmed.startsWith("[__LANG_MARKER__:") && trimmed.endsWith("]")) {
+                    val token = trimmed.removePrefix("[__LANG_MARKER__:").removeSuffix("]")
+                    currentLang = if (token.equals("/lang", ignoreCase = true)) {
+                        null
+                    } else {
+                        matchLanguageMarker(token)?.also {
+                            buckets.getOrPut(it) { mutableListOf() }
+                        }
+                    }
+                    continue
+                }
+                val detectedHeaderLang = detectLanguageHeading(trimmed)
+                if (detectedHeaderLang != null) {
+                    currentLang = detectedHeaderLang
+                    buckets.getOrPut(detectedHeaderLang) { mutableListOf() }
+                    continue
+                }
+                if (MARKDOWN_RULE_RE.matches(trimmed)) continue
+                currentLang?.let { lang ->
+                    buckets.getOrPut(lang) { mutableListOf() }.add(rawLine)
+                }
+            }
+            if (buckets.isEmpty()) return emptyMap()
+            return buildMap {
+                for ((lang, lines) in buckets) {
+                    val formatted = formatChangelog(lines.joinToString("\n"))
+                    if (formatted.isNotBlank()) put(lang, formatted)
+                }
+            }
+        }
+
+        private fun detectLanguageHeading(trimmedLine: String): String? {
+            if (trimmedLine.length > 64) return null
+            var candidate = trimmedLine.trimStart('#', ' ')
+            if (candidate.startsWith("**") && candidate.endsWith("**") && candidate.length > 4) {
+                candidate = candidate.removeSurrounding("**").trim()
+            } else if (candidate.startsWith("__") && candidate.endsWith("__") && candidate.length > 4) {
+                candidate = candidate.removeSurrounding("__").trim()
+            }
+            if (candidate.startsWith("[") && candidate.endsWith("]") && candidate.length > 2) {
+                candidate = candidate.removeSurrounding("[", "]").trim()
+            }
+            candidate = candidate.trimEnd(':', '：').trim()
+            return matchLanguageMarker(candidate)
+        }
+
+        private fun matchLanguageMarker(rawToken: String): String? {
+            val token = rawToken
+                .removePrefix("lang:")
+                .removePrefix("LANG:")
+                .trim()
+                .lowercase(Locale.US)
+                .replace('_', '-')
+            return when (token) {
+                "zh-cn", "zh-hans", "zh-sg",
+                "简体中文", "中文（简体）", "中文 (简体)",
+                "更新说明（简体中文）", "更新说明 (简体中文)",
+                "更新日志（简体中文）", "更新日志 (简体中文)",
+                "simplified chinese",
+                -> "zh-CN"
+
+                "zh-hk", "zh-tw", "zh-mo", "zh-hant",
+                "繁體中文", "繁体中文",
+                "繁體中文（香港）", "繁體中文 (香港)",
+                "繁體中文（台灣）", "繁體中文 (台灣)",
+                "中文（繁體）", "中文 (繁體)",
+                "更新說明（繁體中文）", "更新說明 (繁體中文)",
+                "更新日誌（繁體中文）", "更新日誌 (繁體中文)",
+                "traditional chinese",
+                -> "zh-HK"
+
+                "en", "en-us", "en-gb",
+                "english",
+                "changelog (english)",
+                "release notes (english)",
+                "what's new (english)",
+                -> "en"
+
+                else -> null
+            }
+        }
 
         internal fun parseAtomReleases(atomXml: String, webBaseUrl: String): List<AppReleaseInfo> {
             val factory = DocumentBuilderFactory.newInstance().apply {
@@ -384,7 +528,9 @@ class AppUpdateService private constructor(
                     val updated = entry.getElementsByTagName("updated").item(0)?.textContent?.trim().orEmpty()
                     val rawHtml = entry.getElementsByTagName("content").item(0)?.textContent.orEmpty()
                     val isForce = rawHtml.contains("[force-update]", ignoreCase = true)
-                    val notes = formatAtomHtmlChangelog(rawHtml)
+                    val normalizedAtom = normalizeAtomHtml(rawHtml)
+                    val localized = parseLocalizedChangelogs(normalizedAtom)
+                    val notes = formatChangelog(normalizedAtom)
                     add(
                         AppReleaseInfo(
                             tagName = tag,
@@ -395,15 +541,19 @@ class AppUpdateService private constructor(
                             apkSizeBytes = 0L,
                             htmlUrl = htmlUrl,
                             isForceUpdate = isForce,
+                            localizedReleaseNotes = localized,
                         ),
                     )
                 }
             }
         }
 
-        internal fun formatAtomHtmlChangelog(rawHtml: String): String {
+        internal fun normalizeAtomHtml(rawHtml: String): String {
             if (rawHtml.isBlank()) return ""
-            val normalized = rawHtml
+            val withCommentsPreserved = HTML_LANG_COMMENT_RE.replace(rawHtml) { match ->
+                "\n[__LANG_MARKER__:${match.groupValues[1]}]\n"
+            }
+            return withCommentsPreserved
                 .replace(HTML_LI_OPEN_RE, "- ")
                 .replace(HTML_BLOCK_BREAK_RE, "\n")
                 .replace(HTML_TAG_RE, "")
@@ -413,28 +563,32 @@ class AppUpdateService private constructor(
                 .replace("&quot;", "\"")
                 .replace("&#39;", "'")
                 .replace("&nbsp;", " ")
-            return formatChangelog(normalized)
         }
+
+        internal fun formatAtomHtmlChangelog(rawHtml: String): String =
+            formatChangelog(normalizeAtomHtml(rawHtml))
 
         internal fun parseExpandedAssets(html: String, webBaseUrl: String): Pair<String?, Long> {
             val match = APK_HREF_RE.find(html) ?: return null to 0L
             val href = match.groupValues[1].replace("&amp;", "&").trim()
-            val resolvedUrl = if (href.startsWith("http://") || href.startsWith("https://")) {
-                href
-            } else {
-                val baseHttpUrl = webBaseUrl.toHttpUrlOrNull()
-                if (baseHttpUrl != null) {
-                    val portSuffix = if ((baseHttpUrl.scheme == "https" && baseHttpUrl.port == 443) ||
-                        (baseHttpUrl.scheme == "http" && baseHttpUrl.port == 80)
-                    ) {
-                        ""
+            val resolvedUrl = when {
+                href.startsWith("https://") -> href
+                href.startsWith("http://") -> if (webBaseUrl.startsWith("http://")) href else null
+                else -> {
+                    val baseHttpUrl = webBaseUrl.toHttpUrlOrNull()
+                    if (baseHttpUrl != null) {
+                        val portSuffix = if ((baseHttpUrl.scheme == "https" && baseHttpUrl.port == 443) ||
+                            (baseHttpUrl.scheme == "http" && baseHttpUrl.port == 80)
+                        ) {
+                            ""
+                        } else {
+                            ":${baseHttpUrl.port}"
+                        }
+                        val path = if (href.startsWith("/")) href else "/$href"
+                        "${baseHttpUrl.scheme}://${baseHttpUrl.host}$portSuffix$path"
                     } else {
-                        ":${baseHttpUrl.port}"
+                        null
                     }
-                    val path = if (href.startsWith("/")) href else "/$href"
-                    "${baseHttpUrl.scheme}://${baseHttpUrl.host}$portSuffix$path"
-                } else {
-                    null
                 }
             }
             val rowEnd = html.indexOf("</li>", match.range.last + 1)

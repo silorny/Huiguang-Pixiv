@@ -20,9 +20,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +40,8 @@ import com.itos.coui.layout.CouiPageColors
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.R
+import moe.huiguang.pixiv.data.model.CaptionTarget
+import moe.huiguang.pixiv.data.model.parseCaptionContent
 import moe.huiguang.pixiv.design.components.GlowChip
 
 /**
@@ -45,6 +54,9 @@ fun IntroCard(
     colors: CouiPageColors,
     modifier: Modifier = Modifier,
     collapsedLines: Int = 4,
+    rawHtml: String? = null,
+    onInternalLink: ((CaptionTarget) -> Unit)? = null,
+    onExternalLink: ((String) -> Unit)? = null,
 ) {
     val shape = CouiShape(20.dp, 3f)
     val cardBackdrop = rememberCouiBackdrop()
@@ -69,6 +81,9 @@ fun IntroCard(
             collapsedLines = collapsedLines,
             backdrop = cardBackdrop,
             dark = dark,
+            rawHtml = rawHtml,
+            onInternalLink = onInternalLink,
+            onExternalLink = onExternalLink,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -90,12 +105,33 @@ fun ExpandableText(
     dark: Boolean = CouiTheme.isDark,
     expandLabel: String = stringResource(R.string.detail_expand),
     collapseLabel: String = stringResource(R.string.detail_collapse),
+    rawHtml: String? = null,
+    onInternalLink: ((CaptionTarget) -> Unit)? = null,
+    onExternalLink: ((String) -> Unit)? = null,
 ) {
-    var expanded by remember(text) { mutableStateOf(false) }
-    var canExpand by remember(text) { mutableStateOf(false) }
+    val linksEnabled = rawHtml != null || onInternalLink != null || onExternalLink != null
+    val parsedCaption = remember(text, rawHtml, linksEnabled) {
+        if (linksEnabled) parseCaptionContent(rawHtml ?: text) else null
+    }
+    val displayText = parsedCaption?.text?.ifBlank { text } ?: text
+    var expanded by remember(displayText) { mutableStateOf(false) }
+    var canExpand by remember(displayText) { mutableStateOf(false) }
+    val annotated = remember(displayText, parsedCaption, colors.accent, onInternalLink, onExternalLink) {
+        if (parsedCaption == null || parsedCaption.links.isEmpty()) {
+            AnnotatedString(displayText)
+        } else {
+            buildCaptionAnnotatedString(
+                text = parsedCaption.text,
+                links = parsedCaption.links,
+                linkColor = colors.accent,
+                onInternalLink = onInternalLink,
+                onExternalLink = onExternalLink,
+            )
+        }
+    }
     Column(modifier.fillMaxWidth()) {
         BasicText(
-            text = text,
+            text = annotated,
             style = TextStyle(
                 color = colors.title.copy(alpha = 0.85f),
                 fontSize = 14.sp,
@@ -129,5 +165,38 @@ fun ExpandableText(
                 )
             }
         }
+    }
+}
+
+private fun buildCaptionAnnotatedString(
+    text: String,
+    links: List<moe.huiguang.pixiv.data.model.CaptionLink>,
+    linkColor: Color,
+    onInternalLink: ((CaptionTarget) -> Unit)?,
+    onExternalLink: ((String) -> Unit)?,
+): AnnotatedString = buildAnnotatedString {
+    append(text)
+    val style = TextLinkStyles(
+        style = SpanStyle(
+            color = linkColor,
+            textDecoration = TextDecoration.Underline,
+        ),
+    )
+    for (link in links) {
+        if (link.start < 0 || link.end > text.length || link.start >= link.end) continue
+        addLink(
+            clickable = LinkAnnotation.Clickable(
+                tag = link.displayUrl,
+                styles = style,
+                linkInteractionListener = {
+                    when (val target = link.target) {
+                        is CaptionTarget.External -> onExternalLink?.invoke(target.url)
+                        else -> onInternalLink?.invoke(target)
+                    }
+                },
+            ),
+            start = link.start,
+            end = link.end,
+        )
     }
 }

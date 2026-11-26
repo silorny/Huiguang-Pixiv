@@ -110,4 +110,16 @@ class EngagementRepositoryTest {
         assertTrue(touchHits.get() <= 2)
         assertEquals(true, r.followedAuthors.value["99"])
     }
+
+    @Test
+    fun `clear drops pending queued writes`() = runBlocking {
+        val api = PixivApi(baseUrl = baseUrl, cookieProvider = { "PHPSESSID=123_ok" })
+        val fav = FavoriteStore(InMemoryKeyValueStore())
+        val r = EngagementRepository(api = api, favorites = fav, minGapMs = 150L, cooldownMs = 100L)
+        r.toggleFollow("88")
+        r.clear()
+        delay(300)
+        assertEquals(0, touchHits.get())
+        assertFalse(r.isFollowed("88"))
+    }
 }

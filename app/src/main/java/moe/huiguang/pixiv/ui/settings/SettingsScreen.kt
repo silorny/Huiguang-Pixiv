@@ -75,7 +75,7 @@ fun SettingsScreen(
 
     fun applyLanguage(language: AppLanguage) {
         settings.setLanguage(language)
-        // minSdk 34: per-app locales are a platform feature, no AppCompat needed.
+        // minSdk 34: per-app locales are a platform feature; Activities handle locale configChanges in place.
         runCatching {
             val manager = context.getSystemService(android.app.LocaleManager::class.java)
             manager?.applicationLocales = if (language == AppLanguage.SYSTEM) {
@@ -83,11 +83,6 @@ fun SettingsScreen(
             } else {
                 android.os.LocaleList.forLanguageTags(language.tag)
             }
-            (context as? android.app.Activity)?.overrideActivityTransition(
-                android.app.Activity.OVERRIDE_TRANSITION_OPEN,
-                android.R.anim.fade_in,
-                android.R.anim.fade_out,
-            )
         }
     }
     var confirmClear by remember { mutableStateOf(false) }

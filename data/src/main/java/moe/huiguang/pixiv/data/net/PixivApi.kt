@@ -35,6 +35,7 @@ import moe.huiguang.pixiv.data.model.NovelSeries
 import moe.huiguang.pixiv.data.model.PixivisionDetail
 import moe.huiguang.pixiv.data.model.PixivisionSummary
 import moe.huiguang.pixiv.data.model.RankingMode
+import moe.huiguang.pixiv.data.model.RelatedIllustsPage
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.data.model.SearchMode
@@ -105,6 +106,15 @@ class PixivApi(
     private val allowLoopbackTestHost: Boolean =
         baseUrl.startsWith("http://127.0.0.1") || baseUrl.startsWith("http://localhost")
 
+    private fun isValidPathId(id: String): Boolean {
+        if (id.isEmpty()) return false
+        return if (allowLoopbackTestHost) {
+            id.length <= 64 && id.all { it.isLetterOrDigit() || it == '_' || it == '-' }
+        } else {
+            id.length <= 32 && id.all { it in '0'..'9' }
+        }
+    }
+
     private fun isPixivCookieHost(host: String): Boolean =
         host == "pixiv.net" || host.endsWith(".pixiv.net") ||
             host == "pixiv.org" || host.endsWith(".pixiv.org")
@@ -146,6 +156,11 @@ class PixivApi(
         }
         .addNetworkInterceptor { chain ->
             val request = chain.request()
+            val host = request.url.host.lowercase()
+            val isLoopback = host == "127.0.0.1" || host == "localhost" || host == "::1"
+            if (!request.isHttps && !isLoopback) {
+                throw IOException("Blocked cleartext HTTP request")
+            }
             val builder = request.newBuilder()
             if (!isAllowedPixivHost(request)) {
                 builder.removeHeader("Referer")
@@ -424,6 +439,7 @@ class PixivApi(
 
     /** Fetches a single Pixivision editorial article in the active app language. */
     suspend fun pixivisionDetail(id: String): PixivisionDetail? {
+        if (!isValidPathId(id)) return null
         val lang = pixivisionLang()
         val (code, html) = get(
             url = "https://www.pixivision.net/$lang/a/$id",
@@ -578,6 +594,7 @@ class PixivApi(
 
     /** Returns the illustration, or `null` when Pixiv has no such id (HTTP 404). */
     suspend fun illust(id: String): IllustDetail? {
+        if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/illust/$id")
         if (code == 404) return null
         if (code != 200) throw PixivException("HTTP $code")
@@ -589,6 +606,7 @@ class PixivApi(
 
     /** Per-page URLs: the ~1200px render plus the full-resolution original. */
     suspend fun illustPages(id: String): List<IllustPage> {
+        if (!isValidPathId(id)) return emptyList()
         val (code, body) = try {
             getJson("$baseUrl/ajax/illust/$id/pages")
         } catch (e: IOException) {
@@ -621,6 +639,7 @@ class PixivApi(
 
     /** Returns the novel (body text included), or `null` when the id is unknown. */
     suspend fun novel(id: String): NovelDetail? {
+        if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/novel/$id")
         if (code == 404) return null
         if (code != 200) throw PixivException("HTTP $code")
@@ -708,6 +727,7 @@ class PixivApi(
         offset: Int = 0,
         privateOnly: Boolean = false,
     ): List<BookmarkItem> {
+        if (!isValidPathId(userId)) return emptyList()
         val rest = if (privateOnly) "hide" else "show"
         val artworks = bookmarkPage("$baseUrl/ajax/user/$userId/illusts/bookmarks", limit, offset, rest) { w ->
             val thumb = w.optString("url").ifEmpty { w.optString("thumbnailUrl") }
@@ -831,6 +851,7 @@ class PixivApi(
      * @return the created Pixiv bookmark id, or `null` if the request failed.
      */
     suspend fun addBookmark(id: String, novel: Boolean = false): String? {
+        if (!isValidPathId(id)) return null
         val url = if (novel) {
             "$baseUrl/ajax/novels/bookmarks/add"
         } else {
@@ -873,6 +894,7 @@ class PixivApi(
         bookmarkId: String? = null,
         novel: Boolean = false,
     ): Boolean {
+        if (!isValidPathId(id)) return false
         val resolvedId = bookmarkId?.takeIf { it.isNotEmpty() } ?: run {
             if (novel) novel(id)?.bookmarkId else illust(id)?.bookmarkId
         } ?: return true
@@ -911,6 +933,8 @@ class PixivApi(
         makePrivate: Boolean,
         userId: String? = null,
     ): Boolean {
+        if (!isValidPathId(id)) return false
+        if (userId != null && !isValidPathId(userId)) return false
         val resolvedId = bookmarkId?.takeIf { it.isNotEmpty() } ?: run {
             if (novel) novel(id)?.bookmarkId else illust(id)?.bookmarkId
         } ?: return false
@@ -970,6 +994,7 @@ class PixivApi(
 
     /** Follows a Pixiv author publicly via `/touch/ajax_api/ajax_api.php`. */
     suspend fun followUser(userId: String): Boolean {
+        if (!isValidPathId(userId)) return false
         val (code, body) = postWithCsrf(
             url = "$baseUrl/touch/ajax_api/ajax_api.php",
             referer = "$baseUrl/users/$userId",
@@ -990,6 +1015,7 @@ class PixivApi(
 
     /** Unfollows a Pixiv author via `/touch/ajax_api/ajax_api.php`. */
     suspend fun unfollowUser(userId: String): Boolean {
+        if (!isValidPathId(userId)) return false
         val (code, body) = postWithCsrf(
             url = "$baseUrl/touch/ajax_api/ajax_api.php",
             referer = "$baseUrl/users/$userId",
@@ -1029,6 +1055,39 @@ class PixivApi(
         }
     }
 
+    /**
+     * Returns an author's public bookmark count (`illusts` + `novels`), or
+     * `null` when unavailable (e.g. not signed in, where Pixiv returns HTTP 400).
+     */
+    suspend fun userBookmarksTotal(id: String): Int? {
+        if (!isValidPathId(id)) return null
+        return coroutineScope {
+            val illustDeferred = async(Dispatchers.IO) {
+                bookmarkTotal("$baseUrl/ajax/user/$id/illusts/bookmarks")
+            }
+            val novelDeferred = async(Dispatchers.IO) {
+                bookmarkTotal("$baseUrl/ajax/user/$id/novels/bookmarks")
+            }
+            val illustTotal = illustDeferred.await()
+            val novelTotal = novelDeferred.await()
+            when {
+                illustTotal != null && novelTotal != null -> illustTotal + novelTotal
+                illustTotal != null -> illustTotal
+                novelTotal != null -> novelTotal
+                else -> null
+            }
+        }
+    }
+
+    private suspend fun bookmarkTotal(base: String): Int? {
+        val (code, body) = getJson("$base?tag=&offset=0&limit=1&rest=show&lang=zh")
+        if (code != 200) return null
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (json.optBoolean("error")) return null
+        val total = json.optJSONObject("body")?.optInt("total", -1) ?: -1
+        return total.takeIf { it >= 0 }
+    }
+
     private fun parseBookmarkTags(array: JSONArray?): List<String> {
         if (array == null) return emptyList()
         return buildList {
@@ -1042,6 +1101,7 @@ class PixivApi(
 
     /** Returns the author profile, or `null` when Pixiv has no such user (HTTP 404). */
     suspend fun user(id: String): UserProfile? {
+        if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/user/$id?full=1")
         if (code == 404) return null
         if (code != 200) throw PixivException("HTTP $code")
@@ -1084,12 +1144,16 @@ class PixivApi(
         profileIds(id, listOf("novels"))
 
     /** Fetches a user's public following list (`/ajax/user/{id}/following`). */
-    suspend fun userFollowing(id: String, offset: Int = 0, limit: Int = 24): List<UserSearchItem> =
-        userRelationList("$baseUrl/ajax/user/$id/following?offset=$offset&limit=$limit&rest=show&lang=zh")
+    suspend fun userFollowing(id: String, offset: Int = 0, limit: Int = 24): List<UserSearchItem> {
+        if (!isValidPathId(id)) return emptyList()
+        return userRelationList("$baseUrl/ajax/user/$id/following?offset=$offset&limit=$limit&rest=show&lang=zh")
+    }
 
     /** Fetches a user's MyPixiv (好P友) list (`/ajax/user/{id}/mypixiv`). */
-    suspend fun userMyPixiv(id: String, offset: Int = 0, limit: Int = 24): List<UserSearchItem> =
-        userRelationList("$baseUrl/ajax/user/$id/mypixiv?offset=$offset&limit=$limit&lang=zh")
+    suspend fun userMyPixiv(id: String, offset: Int = 0, limit: Int = 24): List<UserSearchItem> {
+        if (!isValidPathId(id)) return emptyList()
+        return userRelationList("$baseUrl/ajax/user/$id/mypixiv?offset=$offset&limit=$limit&lang=zh")
+    }
 
     private suspend fun userRelationList(url: String): List<UserSearchItem> {
         val (code, body) = getJson(url)
@@ -1115,6 +1179,7 @@ class PixivApi(
     }
 
     private suspend fun profileIds(id: String, keys: List<String>): List<String> {
+        if (!isValidPathId(id)) return emptyList()
         val (code, body) = getJson("$baseUrl/ajax/user/$id/profile/all")
         if (code == 404) return emptyList()
         if (code != 200) throw PixivException("HTTP $code")
@@ -1169,6 +1234,7 @@ class PixivApi(
         offset: Int,
         limit: Int = 18,
     ): List<SearchItem> {
+        if (!isValidPathId(id)) return emptyList()
         val ids = when (category) {
             SearchCategory.MANGA -> userMangaIds(id)
             else -> userIllustIds(id)
@@ -1235,6 +1301,85 @@ class PixivApi(
     }
 
     /**
+     * Fetches neighboring works by [userId] centered around [currentId]
+     * (newest first), using `/profile/all` + batch `/profile/illusts`.
+     */
+    suspend fun authorNeighborWorks(
+        userId: String,
+        currentId: String,
+        radius: Int = 6,
+    ): List<SearchItem> {
+        if (!isValidPathId(userId) || !isValidPathId(currentId)) return emptyList()
+        val (code, body) = getJson("$baseUrl/ajax/user/$userId/profile/all")
+        if (code == 404) return emptyList()
+        if (code != 200) throw PixivException("HTTP $code")
+        val json = JSONObject(body)
+        if (json.optBoolean("error")) return emptyList()
+        val b = json.optJSONObject("body") ?: return emptyList()
+
+        val illustIds = collectObjectKeys(b.optJSONObject("illusts"))
+        val mangaIds = collectObjectKeys(b.optJSONObject("manga"))
+        val allIds = (illustIds + mangaIds)
+            .distinct()
+            .sortedByDescending { it.toLongOrNull() ?: 0L }
+        if (allIds.isEmpty()) return emptyList()
+
+        val centerIdx = allIds.indexOf(currentId)
+        val windowIds = if (centerIdx >= 0) {
+            val start = (centerIdx - radius).coerceAtLeast(0)
+            val end = (centerIdx + radius + 1).coerceAtMost(allIds.size)
+            allIds.subList(start, end)
+        } else {
+            allIds.take(radius * 2 + 1)
+        }
+        val windowIllusts = windowIds.filter { it in illustIds }
+        val windowManga = windowIds.filter { it in mangaIds && it !in illustIds }
+
+        val hydrated = HashMap<String, SearchItem>()
+        if (windowIllusts.isNotEmpty()) {
+            fetchProfileIllustBatch(userId, windowIllusts, SearchCategory.ILLUST)
+                .forEach { hydrated[it.id] = it }
+        }
+        if (windowManga.isNotEmpty()) {
+            fetchProfileIllustBatch(userId, windowManga, SearchCategory.MANGA)
+                .forEach { hydrated[it.id] = it }
+        }
+        return windowIds.mapNotNull { hydrated[it] }
+    }
+
+    private fun collectObjectKeys(obj: JSONObject?): Set<String> {
+        if (obj == null) return emptySet()
+        val out = LinkedHashSet<String>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (isValidPathId(key)) out += key
+        }
+        return out
+    }
+
+    private suspend fun fetchProfileIllustBatch(
+        userId: String,
+        ids: List<String>,
+        category: SearchCategory,
+    ): List<SearchItem> {
+        val workCategory = if (category == SearchCategory.MANGA) "manga" else "illust"
+        val query = ids.joinToString("") { "&ids%5B%5D=$it" }
+        val (code, body) = getJson(
+            "$baseUrl/ajax/user/$userId/profile/illusts?is_first_page=0&work_category=$workCategory&lang=zh$query",
+        )
+        if (code != 200) return emptyList()
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return emptyList()
+        if (json.optBoolean("error")) return emptyList()
+        val works = json.optJSONObject("body")?.optJSONObject("works") ?: return emptyList()
+        return ids.mapNotNull { workId ->
+            works.optJSONObject(workId)?.let(::parseThumbIllust)?.let { item ->
+                if (category == SearchCategory.MANGA) item.copy(category = SearchCategory.MANGA) else item
+            }
+        }
+    }
+
+    /**
      * Novel cards for an author. `/profile/novels` accepts a batch of ids and
      * returns lightweight thumbnails (not the novel body), so 18 works cost one
      * request instead of 18 full novel downloads.
@@ -1244,6 +1389,7 @@ class PixivApi(
 
     /** Batch-loads a page of the user's novels starting at [offset]. */
     suspend fun userNovelWorksPage(id: String, offset: Int, limit: Int = 18): List<SearchItem> {
+        if (!isValidPathId(id)) return emptyList()
         val ids = userNovelIds(id).drop(offset).take(limit)
         if (ids.isEmpty()) return emptyList()
         val query = ids.joinToString("") { "&ids%5B%5D=$it" }
@@ -1316,8 +1462,9 @@ class PixivApi(
         }
         val regular = urls?.optString("regular").orEmpty()
         val small = urls?.optString("small").orEmpty()
+        val currentId = b.optString("illustId")
         return IllustDetail(
-            id = b.optString("illustId"),
+            id = currentId,
             title = b.optString("illustTitle"),
             userId = b.optString("userId"),
             userName = b.optString("userName"),
@@ -1338,7 +1485,81 @@ class PixivApi(
             description = b.optString("description"),
             userAvatarUrl = b.optString("userImage"),
             bookmarkId = b.optJSONObject("bookmarkData")?.optString("id")?.takeIf { it.isNotEmpty() },
+            authorNeighborWorks = parseUserIllustNeighbors(b.optJSONObject("userIllusts"), currentId),
         )
+    }
+
+    private fun parseUserIllustNeighbors(
+        userIllusts: JSONObject?,
+        currentId: String,
+    ): List<SearchItem> {
+        if (userIllusts == null) return emptyList()
+        val keys = collectObjectKeys(userIllusts)
+            .sortedByDescending { it.toLongOrNull() ?: 0L }
+        val nonNullItems = keys.mapNotNull { key ->
+            val obj = userIllusts.optJSONObject(key) ?: return@mapNotNull null
+            val item = parseThumbIllust(obj)
+            val resolvedId = item.id.ifEmpty { key }
+            if (!isValidPathId(resolvedId)) return@mapNotNull null
+            if (item.id.isEmpty()) item.copy(id = resolvedId) else item
+        }
+        if (nonNullItems.isEmpty()) return emptyList()
+        val idx = nonNullItems.indexOfFirst { it.id == currentId }
+        if (idx < 0) return nonNullItems.take(13)
+        val start = (idx - 6).coerceAtLeast(0)
+        val end = (idx + 7).coerceAtMost(nonNullItems.size)
+        return nonNullItems.subList(start, end)
+    }
+
+    /** Initial page of related works + queue of `nextIds` for `/ajax/illust/{id}/recommend/init`. */
+    suspend fun relatedIllustsInit(id: String, limit: Int = 18): RelatedIllustsPage {
+        if (!isValidPathId(id)) return RelatedIllustsPage()
+        val safeLimit = limit.coerceIn(1, 50)
+        val (code, body) = getJson("$baseUrl/ajax/illust/$id/recommend/init?limit=$safeLimit&lang=zh")
+        if (code == 404) return RelatedIllustsPage()
+        if (code != 200) throw PixivException("HTTP $code")
+        val json = JSONObject(body)
+        if (json.optBoolean("error")) return RelatedIllustsPage()
+        val payload = json.optJSONObject("body") ?: return RelatedIllustsPage()
+        val items = parseRecommendIllustArray(payload.optJSONArray("illusts"))
+        val nextArr = payload.optJSONArray("nextIds")
+        val nextIds = buildList {
+            if (nextArr != null) {
+                for (i in 0 until nextArr.length()) {
+                    val nextId = nextArr.optString(i).trim()
+                    if (nextId.isNotEmpty() && nextId.length <= 32 && nextId.all { it in '0'..'9' }) {
+                        add(nextId)
+                    }
+                }
+            }
+        }
+        return RelatedIllustsPage(items = items, nextIds = nextIds)
+    }
+
+    /** Hydrates subsequent pages of related works from `nextIds`. */
+    suspend fun relatedIllustsByIds(ids: List<String>): List<SearchItem> {
+        val validIds = ids.distinct().filter(::isValidPathId).take(18)
+        if (validIds.isEmpty()) return emptyList()
+        val query = validIds.joinToString("&") { "illust_ids%5B%5D=$it" }
+        val (code, body) = getJson("$baseUrl/ajax/illust/recommend/illusts?lang=zh&$query")
+        if (code == 404) return emptyList()
+        if (code != 200) throw PixivException("HTTP $code")
+        val json = JSONObject(body)
+        if (json.optBoolean("error")) return emptyList()
+        val payload = json.optJSONObject("body") ?: return emptyList()
+        return parseRecommendIllustArray(payload.optJSONArray("illusts"))
+    }
+
+    private fun parseRecommendIllustArray(array: JSONArray?): List<SearchItem> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                if (o.optBoolean("isAdContainer", false)) continue
+                val item = parseThumbIllust(o)
+                if (isValidPathId(item.id)) add(item)
+            }
+        }
     }
 
     // ----------------------------------------------------------------- search
@@ -1483,6 +1704,7 @@ class PixivApi(
 
     /** Novel series metadata; this endpoint answers without a session. */
     suspend fun novelSeries(seriesId: String): NovelSeries? {
+        if (!isValidPathId(seriesId)) return null
         synchronized(seriesMetaCache) { seriesMetaCache[seriesId] }?.let { return it }
 
         val (code, body) = getJson("$baseUrl/ajax/novel/series/$seriesId?lang=zh")
@@ -1524,6 +1746,7 @@ class PixivApi(
         limit: Int = 30,
         lastOrder: Int = 0,
     ): SeriesContent? {
+        if (!isValidPathId(seriesId)) return null
         val (code, body) = getJson(
             "$baseUrl/ajax/novel/series_content/$seriesId" +
                 "?limit=$limit&last_order=$lastOrder&order_by=asc&lang=zh",

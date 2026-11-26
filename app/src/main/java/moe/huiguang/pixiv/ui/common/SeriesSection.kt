@@ -1,5 +1,10 @@
 package moe.huiguang.pixiv.ui.common
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -7,8 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -34,6 +41,7 @@ fun SeriesSection(
     api: PixivApi,
     onOpenWork: (String) -> Unit,
     onOpenSeries: () -> Unit,
+    insetInGrid: Boolean = false,
 ) {
     val colors = CouiPageDefaults.themeColors()
     val kind = if (isNovel) HistoryEntry.KIND_NOVEL else HistoryEntry.KIND_ILLUST
@@ -70,7 +78,7 @@ fun SeriesSection(
         }
     }
 
-    Group(title = stringResource(R.string.detail_series)) {
+    val seriesBody: @Composable ColumnScope.() -> Unit = {
         Item(
             summary = {
                 if (series.order > 0) {
@@ -125,6 +133,26 @@ fun SeriesSection(
                 color = colors.accent,
             )
         }
+    }
+
+    if (insetInGrid) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(R.string.detail_series),
+                kind = CouiTextKind.GroupTitle,
+                color = colors.summary,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(CouiPageDefaults.shape)
+                    .background(colors.card),
+                content = seriesBody,
+            )
+        }
+    } else {
+        Group(title = stringResource(R.string.detail_series), content = seriesBody)
     }
 }
 

@@ -15,12 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
@@ -28,7 +29,6 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
-import moe.huiguang.pixiv.design.shape.g2CornerMask
 
 private val WorkRowThumbShape = CachedCouiShape(12.dp, 3f)
 internal val WorkRowCardShape = CachedCouiShape(18.dp, 3f)
@@ -46,6 +46,7 @@ fun WorkRow(
     enabled: Boolean = true,
     /** `false` renders the same content without its own card, for use inside a Group. */
     surface: Boolean = true,
+    outerHorizontalPadding: Dp = 16.dp,
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
@@ -66,9 +67,9 @@ fun WorkRow(
         )
     val container = if (surface) {
         Modifier
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .background(colors.card, cardShape)
-            .g2CornerMask(cardShape, colors.background)
+            .padding(horizontal = outerHorizontalPadding, vertical = 6.dp)
+            .clip(cardShape)
+            .background(colors.card)
             .then(clickModifier)
             .padding(10.dp)
     } else {
@@ -101,7 +102,6 @@ internal fun WorkRowBody(
     enabled: Boolean = true,
 ) {
     val colors = CouiPageDefaults.themeColors()
-    val opaqueCardColor = colors.card.compositeOver(colors.background)
     val thumbShape = WorkRowThumbShape
     Row(
         modifier = modifier,
@@ -111,7 +111,8 @@ internal fun WorkRowBody(
             Box(
                 Modifier
                     .size(64.dp)
-                    .background(colors.background, thumbShape),
+                    .clip(thumbShape)
+                    .background(colors.background),
             )
         } else {
             RetryableImage(
@@ -120,8 +121,8 @@ internal fun WorkRowBody(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(64.dp)
-                    .background(colors.background)
-                    .g2CornerMask(thumbShape, opaqueCardColor),
+                    .clip(thumbShape)
+                    .background(colors.background),
             )
         }
         Spacer(Modifier.width(12.dp))

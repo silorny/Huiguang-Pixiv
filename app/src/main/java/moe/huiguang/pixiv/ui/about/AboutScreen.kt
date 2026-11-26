@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,9 +84,11 @@ import kotlinx.coroutines.withContext
 import moe.huiguang.pixiv.BuildConfig
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.net.AppUpdateService
+import moe.huiguang.pixiv.data.store.AppLanguage
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
+import moe.huiguang.pixiv.ui.common.openExternalUrl
 import okhttp3.Request
 import org.json.JSONObject
 
@@ -281,12 +284,14 @@ fun AboutScreen(
         )
     }
 
+    val appLanguage = settings?.state?.collectAsState()?.value?.language ?: AppLanguage.SYSTEM
     val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(dark) else null
     UpdateBottomSheet(
         visible = showUpdateSheet,
         checkKey = updateCheckKey,
         dark = dark,
         windowBackdrop = windowBackdrop,
+        appLanguage = appLanguage,
         onSkipVersion = { tag -> settings?.setSkippedUpdateTag(tag) },
     )
 
@@ -911,13 +916,5 @@ private fun VerbatimLicenseContent(assetName: String) {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         )
-    }
-}
-
-private fun openExternalUrl(context: Context, url: String) {
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    }.onFailure {
-        Toast.makeText(context, context.getString(R.string.action_failed), Toast.LENGTH_SHORT).show()
     }
 }

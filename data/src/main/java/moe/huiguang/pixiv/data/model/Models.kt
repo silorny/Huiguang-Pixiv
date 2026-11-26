@@ -31,9 +31,16 @@ data class IllustDetail(
     val series: SeriesNav? = null,
     /** Non-null when the signed-in user has bookmarked this work on Pixiv. */
     val bookmarkId: String? = null,
+    /** Neighboring works by the same author, ordered newest-first around this work. */
+    val authorNeighborWorks: List<SearchItem> = emptyList(),
 ) {
     val isAdult: Boolean get() = xRestrict > 0
 }
+
+data class RelatedIllustsPage(
+    val items: List<SearchItem> = emptyList(),
+    val nextIds: List<String> = emptyList(),
+)
 
 /** A Pixiv author / artist profile. */
 data class UserProfile(

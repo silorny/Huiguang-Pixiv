@@ -63,6 +63,7 @@ class EngagementRepository(
         val previousState: Boolean,
         val targetState: Boolean,
         val entry: FavoriteEntry? = null,
+        val epoch: Long = 0L,
     )
 
     private val _followedAuthors = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -88,6 +89,9 @@ class EngagementRepository(
 
     @Volatile
     private var cooldownUntilMs = 0L
+
+    @Volatile
+    private var sessionEpoch = 0L
 
     init {
         scope.launch { processLoop() }
@@ -140,6 +144,7 @@ class EngagementRepository(
                 id = userId,
                 previousState = current,
                 targetState = target,
+                epoch = sessionEpoch,
             ),
         )
     }
@@ -159,16 +164,24 @@ class EngagementRepository(
                 previousState = current,
                 targetState = target,
                 entry = entry,
+                epoch = sessionEpoch,
             ),
         )
     }
 
     fun clear() {
+        sessionEpoch++
         _followedAuthors.value = emptyMap()
         _bookmarkedIllusts.value = emptyMap()
         _bookmarkedNovels.value = emptyMap()
         bookmarkIds.clear()
+        activeKeys.clear()
         api.clearCsrfCache()
+        scope.launch {
+            queueMutex.withLock {
+                pendingQueue.clear()
+            }
+        }
     }
 
     private fun enqueue(task: WriteTask) {
@@ -203,6 +216,10 @@ class EngagementRepository(
     }
 
     private suspend fun executeTask(task: WriteTask) {
+        if (task.epoch != sessionEpoch) {
+            activeKeys.remove(task.key)
+            return
+        }
         var succeeded = false
         var errorReason: String? = null
         try {
@@ -221,7 +238,9 @@ class EngagementRepository(
                     if (task.targetState) {
                         val newId = api.addBookmark(task.id, novel = novel)
                         if (newId != null) {
-                            bookmarkIds[bKey] = newId
+                            if (task.epoch == sessionEpoch) {
+                                bookmarkIds[bKey] = newId
+                            }
                             succeeded = true
                         }
                     } else {
@@ -242,6 +261,10 @@ class EngagementRepository(
             errorReason = e.message
         }
 
+        if (task.epoch != sessionEpoch) {
+            activeKeys.remove(task.key)
+            return
+        }
         val superseded = queueMutex.withLock {
             pendingQueue.any { it.key == task.key }
         }

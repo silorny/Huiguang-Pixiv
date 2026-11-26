@@ -1,10 +1,16 @@
 package moe.huiguang.pixiv.ui.login
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
@@ -54,9 +60,12 @@ fun LoginScreen(
     onLoggedIn: () -> Unit,
 ) {
     val dark = CouiTheme.isDark
+    val context = LocalContext.current
+    val resources = LocalResources.current
     val windowBackdrop = rememberCouiWindowBackdrop()
     val scope = rememberCoroutineScope()
     var verifying by remember { mutableStateOf(false) }
+    var loginSucceeded by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -77,6 +86,7 @@ fun LoginScreen(
             if (userId.isNullOrBlank()) {
                 problem = noSession
             } else {
+                loginSucceeded = true
                 settingsStore.saveSession(cookie, userId)
                 onLoggedIn()
             }
@@ -84,7 +94,18 @@ fun LoginScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { webView?.destroy() }
+        onDispose {
+            webView?.destroy()
+            if (!loginSucceeded && settingsStore.current.session == null) {
+                runCatching {
+                    CookieManager.getInstance().apply {
+                        removeAllCookies(null)
+                        flush()
+                    }
+                    WebStorage.getInstance().deleteAllData()
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -117,6 +138,8 @@ fun LoginScreen(
                     this.settings.domStorageEnabled = true
                     this.settings.allowContentAccess = false
                     this.settings.allowFileAccess = false
+                    this.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    this.settings.safeBrowsingEnabled = true
                     this.settings.useWideViewPort = true
                     this.settings.loadWithOverviewMode = true
                     CookieManager.getInstance().setAcceptCookie(true)
@@ -125,7 +148,17 @@ fun LoginScreen(
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest,
-                        ): Boolean = request.url.scheme?.lowercase() != "https"
+                        ): Boolean {
+                            val allowed = isAllowedLoginUrl(request.url)
+                            if (!allowed && request.isForMainFrame) {
+                                Toast.makeText(
+                                    context,
+                                    resources.getString(R.string.login_blocked_url),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                            return !allowed
+                        }
 
                         override fun onPageFinished(view: WebView, url: String?) {
                             webView = view
@@ -163,3 +196,16 @@ private const val SITE = "https://www.pixiv.net"
 
 private const val LOGIN_URL =
     "https://accounts.pixiv.net/login?lang=zh&source=pc&view_type=page&ref=wwwtop_accounts_index"
+
+internal fun isAllowedLoginUrl(uri: Uri?): Boolean {
+    if (uri == null || uri.scheme?.lowercase() != "https") return false
+    val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
+    return host == "pixiv.net" || host.endsWith(".pixiv.net") ||
+        host == "pixiv.org" || host.endsWith(".pixiv.org") ||
+        host == "accounts.google.com" ||
+        host == "gstatic.com" || host.endsWith(".gstatic.com") ||
+        host == "recaptcha.net" || host.endsWith(".recaptcha.net") ||
+        host == "challenges.cloudflare.com" ||
+        host == "appleid.apple.com" ||
+        host == "api.twitter.com" || host == "twitter.com" || host == "x.com"
+}

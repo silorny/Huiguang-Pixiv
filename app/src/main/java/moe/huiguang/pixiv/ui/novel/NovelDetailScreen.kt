@@ -63,12 +63,14 @@ import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.LoadingDialog
 import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageColors
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
+import com.itos.coui.menu.rememberCouiWindowBackdrop
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.shape.CouiShape
@@ -81,6 +83,7 @@ import com.itos.coui.topappbar.TopAppBarSurface
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.media.ImageDownloader
+import moe.huiguang.pixiv.data.model.CaptionTarget
 import moe.huiguang.pixiv.data.model.NovelBlocks
 import moe.huiguang.pixiv.data.model.NovelDetail
 import moe.huiguang.pixiv.data.model.ShareFormatter
@@ -98,10 +101,13 @@ import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.TagChip
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
+import moe.huiguang.pixiv.ui.common.ExternalLinkConfirmDialog
 import moe.huiguang.pixiv.ui.common.IntroCard
 import moe.huiguang.pixiv.ui.common.LinkedWorksSection
 import moe.huiguang.pixiv.ui.common.SeriesSection
 import moe.huiguang.pixiv.ui.common.WorkMetaHeader
+import moe.huiguang.pixiv.ui.common.copyPlainText
+import moe.huiguang.pixiv.ui.common.openExternalUrl
 import moe.huiguang.pixiv.ui.detail.plainCaption
 
 /**
@@ -154,6 +160,11 @@ fun NovelDetailScreen(
     val followedAuthors by engagement.followedAuthors.collectAsState()
     val isFavorite = bookmarkedNovels[novelId] ?: (novel?.bookmarkId != null)
     val settingsState by settings.state.collectAsState()
+    var pendingExternalUrl by remember { mutableStateOf<String?>(null) }
+    var externalLinkDialogVisible by remember { mutableStateOf(false) }
+    val dialogDark = CouiTheme.isDark
+    val windowBackdrop = rememberCouiWindowBackdrop()
+    val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(dialogDark) else null
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -395,6 +406,10 @@ fun NovelDetailScreen(
                         onOpenSeries = onOpenSeries,
                         onOpenLinked = onOpenLinked,
                         onSearchTag = onSearchTag,
+                        onExternalLink = { url ->
+                            pendingExternalUrl = url
+                            externalLinkDialogVisible = true
+                        },
                     )
                 }
             }
@@ -414,9 +429,7 @@ fun NovelDetailScreen(
             onExport = { exportTxt() },
             onOpenBrowser = {
                 current?.let { work ->
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(PixivApi.NOVEL_PAGE_URL + work.id)),
-                    )
+                    openExternalUrl(context, PixivApi.NOVEL_PAGE_URL + work.id)
                 }
             },
             onCopyLink = {
@@ -482,9 +495,7 @@ fun NovelDetailScreen(
                         label = stringResource(R.string.detail_action_browser),
                         iconRes = R.drawable.ic_open_browser,
                         onClick = {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(PixivApi.NOVEL_PAGE_URL + current.id)),
-                            )
+                            openExternalUrl(context, PixivApi.NOVEL_PAGE_URL + current.id)
                         },
                     ),
                 ),
@@ -500,6 +511,26 @@ fun NovelDetailScreen(
         visible = exporting,
         message = stringResource(R.string.novel_exporting),
     )
+
+    pendingExternalUrl?.let { url ->
+        ExternalLinkConfirmDialog(
+            visible = externalLinkDialogVisible,
+            url = url,
+            dark = dialogDark,
+            colors = colors,
+            material = dialogMaterial,
+            backdrop = windowBackdrop,
+            onDismiss = { externalLinkDialogVisible = false },
+            onCopyUrl = {
+                copyPlainText(context, "novel_caption_link", url, resources.getString(R.string.detail_link_copied))
+                externalLinkDialogVisible = false
+            },
+            onOpenUrl = {
+                externalLinkDialogVisible = false
+                openExternalUrl(context, url)
+            },
+        )
+    }
 }
 
 /** Floating top bar with smooth scroll-linked title handoff and COUI overflow menu. */
@@ -624,6 +655,7 @@ private fun NovelDetailContent(
     onOpenSeries: (String, String) -> Unit,
     onOpenLinked: (String, String) -> Unit,
     onSearchTag: (String) -> Unit,
+    onExternalLink: (String) -> Unit,
 ) {
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val density = LocalDensity.current
@@ -740,6 +772,16 @@ private fun NovelDetailContent(
             IntroCard(
                 text = description,
                 colors = colors,
+                rawHtml = novel.description,
+                onInternalLink = { target ->
+                    when (target) {
+                        is CaptionTarget.Illust -> onOpenLinked("illust", target.id)
+                        is CaptionTarget.Novel -> onOpenLinked("novel", target.id)
+                        is CaptionTarget.User -> onOpenAuthor(target.id)
+                        is CaptionTarget.External -> onExternalLink(target.url)
+                    }
+                },
+                onExternalLink = onExternalLink,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
@@ -764,6 +806,7 @@ private fun NovelDetailContent(
             series = novel.series,
             api = api,
             onOpen = { work -> onOpenLinked(work.kind, work.id) },
+            onOpenAuthor = onOpenAuthor,
         )
 
         // Tags: no group card, matching the artwork detail page.

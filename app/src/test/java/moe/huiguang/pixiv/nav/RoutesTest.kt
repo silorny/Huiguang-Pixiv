@@ -20,6 +20,7 @@ class RouteCodecTest {
             Route.Series("illust", "900", "776"),
             Route.Reader("29404946"),
             Route.Viewer("150930584", 3),
+            Route.UserBookmarks("92806916"),
         )
         routes.forEach { route ->
             assertEquals(route, RouteCodec.decode(RouteCodec.encode(route)))
@@ -37,6 +38,12 @@ class RouteCodecTest {
         assertNull(RouteCodec.decode("nope"))
         assertNull(RouteCodec.decode(""))
         assertNull(RouteCodec.decode("detail|illust"))
+        assertNull(RouteCodec.decode("detail|illust|777/../../etc"))
+        assertNull(RouteCodec.decode("author|12|34"))
+        assertNull(RouteCodec.decode("aboutdoc|../secret"))
+        assertNull(RouteCodec.decode("viewer|150930584|-1"))
+        assertNull(RouteCodec.decode("userbookmarks|../secret"))
+        assertNull(RouteCodec.decode("userbookmarks|1|2"))
     }
 }
 
@@ -54,6 +61,7 @@ class RouteTest {
             Route.Login, Route.Settings, Route.ShareFormat, Route.History, Route.Bookmarks, Route.About, Route.AboutDoc("ack"),
             Route.Detail("illust", "1"), Route.Author("2"), Route.Series("illust", "3", "4"),
             Route.Reader("5"), Route.Viewer("6", 0), Route.SearchResults("q", "tag"),
+            Route.UserBookmarks("7"),
         )
         pages.forEach { assertTrue(Route.isPage(it)); assertFalse(Route.isTab(it)) }
     }

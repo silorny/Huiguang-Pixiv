@@ -1,5 +1,6 @@
 package moe.huiguang.pixiv
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,9 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.itos.coui.menu.ProvideCouiMenuBackdrop
+import java.util.Locale
 import moe.huiguang.pixiv.data.store.ThemeMode
 import moe.huiguang.pixiv.design.HuiguangTheme
 
@@ -28,12 +32,22 @@ import moe.huiguang.pixiv.design.HuiguangTheme
  */
 abstract class HuiguangActivity : ComponentActivity() {
 
+    private var configRevision by mutableIntStateOf(0)
+
+    protected open fun shouldFinishEarlyOnCreate(): Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (shouldFinishEarlyOnCreate()) {
+            super.onCreate(savedInstanceState)
+            finish()
+            return
+        }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         enableHighRefreshRate()
         val settings = (application as App).container.settings
         setContent {
+            val currentRevision = configRevision
             val state by settings.state.collectAsState()
             val dark = when (state.themeMode) {
                 ThemeMode.LIGHT -> false
@@ -41,6 +55,7 @@ abstract class HuiguangActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
             }
             SideEffect {
+                currentRevision
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !dark
                     isAppearanceLightNavigationBars = !dark
@@ -57,6 +72,12 @@ abstract class HuiguangActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        newConfig.locales.takeIf { !it.isEmpty }?.get(0)?.let { Locale.setDefault(it) }
+        configRevision++
     }
 
     @Composable

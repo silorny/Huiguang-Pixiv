@@ -1,5 +1,6 @@
 package moe.huiguang.pixiv
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import moe.huiguang.pixiv.ui.AppRoot
 
@@ -8,6 +9,11 @@ import moe.huiguang.pixiv.ui.AppRoot
  * so this Activity never owns a back stack.
  */
 class MainActivity : HuiguangActivity() {
+
+    override fun shouldFinishEarlyOnCreate(): Boolean =
+        !isTaskRoot &&
+            intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true &&
+            intent?.action == Intent.ACTION_MAIN
 
     @Composable
     override fun Page() {

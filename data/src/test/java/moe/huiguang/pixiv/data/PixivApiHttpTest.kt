@@ -96,6 +96,8 @@ class PixivApiHttpTest {
         path == "/ajax/user/12345/novels/bookmarks" -> 200 to BOOKMARK_NOVELS_JSON
         path == "/ajax/illust/404" -> 404 to "{\"error\":true}"
         path == "/ajax/illust/777" -> 200 to ILLUST_JSON
+        path == "/ajax/illust/777/recommend/init" -> 200 to RECOMMEND_INIT_JSON
+        path == "/ajax/illust/recommend/illusts" -> 200 to RECOMMEND_ILLUSTS_JSON
         path == "/ajax/illust/drop" -> 200 to ILLUST_JSON
         path == "/ajax/illust/503" ->
             if (hits["/ajax/illust/503"]!!.get() == 1) 503 to "busy" else 200 to ILLUST_JSON
@@ -139,6 +141,7 @@ class PixivApiHttpTest {
         assertEquals(2, series.order)
         assertEquals("776", series.prev?.id)
         assertNull(series.next)
+        assertEquals(listOf("778", "777", "776"), detail.authorNeighborWorks.map { it.id })
     }
 
     @Test
@@ -409,6 +412,42 @@ class PixivApiHttpTest {
         }
     }
 
+    @Test
+    fun `invalid path ids are rejected before network call`() = runBlocking {
+        val before = hits.values.sumOf { it.get() }
+        assertNull(api().illust("777?x=1"))
+        assertNull(api().user("../self"))
+        assertTrue(api().illustPages("777/pages").isEmpty())
+        assertFalse(api().followUser("42&restrict=1"))
+        val after = hits.values.sumOf { it.get() }
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun `userBookmarksTotal sums public illust and novel totals`() = runBlocking {
+        assertEquals(15, api().userBookmarksTotal("12345"))
+        assertNull(api().userBookmarksTotal("999"))
+        assertNull(api().userBookmarksTotal("12345/bad"))
+    }
+
+    @Test
+    fun `authorNeighborWorks merges illusts and manga sorted newest first`() = runBlocking {
+        val neighbors = api().authorNeighborWorks("42", "901")
+        assertEquals(listOf("902", "901"), neighbors.map { it.id })
+        assertEquals(SearchCategory.MANGA, neighbors[0].category)
+        assertEquals(SearchCategory.ILLUST, neighbors[1].category)
+    }
+
+    @Test
+    fun `relatedIllustsInit skips ad containers and relatedIllustsByIds hydrates nextIds`() = runBlocking {
+        val page = api().relatedIllustsInit("777", limit = 18)
+        assertEquals(listOf("601"), page.items.map { it.id })
+        assertEquals(listOf("602", "603"), page.nextIds)
+        val more = api().relatedIllustsByIds(page.nextIds)
+        assertEquals(listOf("602", "603"), more.map { it.id })
+        assertEquals(SearchCategory.MANGA, more[0].category)
+    }
+
     private companion object {
         const val ILLUST_JSON = """
         {"error":false,"body":{
@@ -419,7 +458,13 @@ class PixivApiHttpTest {
           "bookmarkCount":10,"likeCount":3,"viewCount":100,"createDate":"2026-01-01T00:00:00+09:00",
           "tags":{"tags":[{"tag":"初音ミク"},{"tag":"オリジナル"}]},
           "seriesNavData":{"seriesId":"900","title":"連作","order":2,
-                           "prev":{"id":"776","title":"前","order":1},"next":null}
+                           "prev":{"id":"776","title":"前","order":1},"next":null},
+          "userIllusts":{
+            "778":{"id":"778","title":"次作","illustType":0,"url":"https://i.pximg.net/778.jpg","userId":"42","userName":"作者","width":800,"height":800,"pageCount":1},
+            "777":{"id":"777","title":"テスト絵","illustType":0,"url":"https://i.pximg.net/777.jpg","userId":"42","userName":"作者","width":800,"height":1200,"pageCount":2},
+            "776":{"id":"776","title":"前作","illustType":0,"url":"https://i.pximg.net/776.jpg","userId":"42","userName":"作者","width":800,"height":800,"pageCount":1},
+            "775":null
+          }
         }}
         """
 
@@ -499,7 +544,7 @@ class PixivApiHttpTest {
         """
 
         const val BOOKMARK_ILLUSTS_JSON = """
-        {"error":false,"body":{"works":[{
+        {"error":false,"body":{"total":12,"works":[{
           "id":"777","title":"絵A","url":"https://i.pximg.net/c/250x250_80_a2/img-master/777_p0_square1200.jpg",
           "userId":"1","userName":"u","pageCount":2,"xRestrict":0,"illustType":0,"width":800,"height":1200,
           "tags":["tag1"],"bookmarkData":{"id":"bm-1","private":true}
@@ -507,7 +552,7 @@ class PixivApiHttpTest {
         """
 
         const val BOOKMARK_NOVELS_JSON = """
-        {"error":false,"body":{"works":[{
+        {"error":false,"body":{"total":3,"works":[{
           "id":"888","title":"小説B","url":"https://i.pximg.net/novel/888.jpg",
           "userId":"2","userName":"v","textCount":1200,"xRestrict":0,
           "tags":["小説"],"bookmarkData":{"id":"bm-2","private":true}
@@ -543,6 +588,25 @@ class PixivApiHttpTest {
           "901":{"id":"901","title":"Illust901","illustType":0,"xRestrict":0,"url":"https://i.pximg.net/901.jpg","userId":"42","userName":"絵師42","width":800,"height":1000,"pageCount":1,"tags":["t1"]},
           "902":{"id":"902","title":"Manga902","illustType":1,"xRestrict":0,"url":"https://i.pximg.net/902.jpg","userId":"42","userName":"絵師42","width":800,"height":1200,"pageCount":8,"tags":["t2"]}
         }}}
+        """
+
+        const val RECOMMEND_INIT_JSON = """
+        {"error":false,"body":{
+          "illusts":[
+            {"isAdContainer":true,"id":"999999"},
+            {"id":"601","title":"Rel1","illustType":0,"xRestrict":0,"url":"https://i.pximg.net/601.jpg","userId":"20","userName":"U20","width":700,"height":900,"pageCount":1,"tags":["a"]}
+          ],
+          "nextIds":["602","603","not-numeric"]
+        }}
+        """
+
+        const val RECOMMEND_ILLUSTS_JSON = """
+        {"error":false,"body":{
+          "illusts":[
+            {"id":"602","title":"Rel2","illustType":1,"xRestrict":0,"url":"https://i.pximg.net/602.jpg","userId":"21","userName":"U21","width":600,"height":800,"pageCount":3,"tags":["b"]},
+            {"id":"603","title":"Rel3","illustType":0,"xRestrict":0,"url":"https://i.pximg.net/603.jpg","userId":"22","userName":"U22","width":800,"height":600,"pageCount":1,"tags":["c"]}
+          ]
+        }}
         """
     }
 }

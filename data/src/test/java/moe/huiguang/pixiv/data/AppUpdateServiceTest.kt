@@ -104,6 +104,25 @@ class AppUpdateServiceTest {
     }
 
     @Test
+    fun `isAllowedApkDownloadUrl accepts only official release downloads`() {
+        assertTrue(
+            AppUpdateService.isAllowedApkDownloadUrl(
+                "https://github.com/silorny/Huiguang-Pixiv/releases/download/v0.1.3/app.apk",
+            ),
+        )
+        assertFalse(
+            AppUpdateService.isAllowedApkDownloadUrl(
+                "https://github.com/evil/repo/releases/download/v0.1.3/app.apk",
+            ),
+        )
+        assertFalse(
+            AppUpdateService.isAllowedApkDownloadUrl(
+                "http://github.com/silorny/Huiguang-Pixiv/releases/download/v0.1.3/app.apk",
+            ),
+        )
+    }
+
+    @Test
     fun `checkForUpdate falls back to web atom and expanded assets when API returns 403`() = runBlocking {
         lateinit var serverUrl: String
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
@@ -173,5 +192,87 @@ class AppUpdateServiceTest {
         AppUpdateService.clearDownloadedUpdates(tempDir)
         assertFalse(updatesDir.exists())
         tempDir.deleteRecursively()
+    }
+
+    @Test
+    fun `parseReleases selects localized changelog by heading markers`() {
+        val json = """
+            [
+              {
+                "tag_name": "v0.1.5",
+                "published_at": "2026-11-27T01:00:00Z",
+                "html_url": "https://github.com/silorny/Huiguang-Pixiv/releases/tag/v0.1.5",
+                "body": "## 简体中文\n- 新增多语言更新说明\n- 优化更新弹窗\n\n---\n\n## 繁體中文\n- 新增多語言更新說明\n- 優化更新彈窗\n\n---\n\n## English\n- Add localized update notes\n- Refine update bottom sheet",
+                "assets": []
+              }
+            ]
+        """.trimIndent()
+        val parsed = AppUpdateService.parseReleases(json).single()
+        assertEquals("• 新增多语言更新说明\n• 优化更新弹窗", parsed.releaseNotesFor("zh-CN"))
+        assertEquals("• 新增多語言更新說明\n• 優化更新彈窗", parsed.releaseNotesFor("zh-HK"))
+        assertEquals("• 新增多語言更新說明\n• 優化更新彈窗", parsed.releaseNotesFor("zh-Hant-TW"))
+        assertEquals("• Add localized update notes\n• Refine update bottom sheet", parsed.releaseNotesFor("en"))
+        assertEquals("• Add localized update notes\n• Refine update bottom sheet", parsed.releaseNotesFor("en-US"))
+    }
+
+    @Test
+    fun `parseReleases supports HTML comment markers and falls back cleanly`() {
+        val json = """
+            [
+              {
+                "tag_name": "v0.1.6",
+                "published_at": "2026-11-27T02:00:00Z",
+                "html_url": "https://github.com/silorny/Huiguang-Pixiv/releases/tag/v0.1.6",
+                "body": "<!-- lang:zh-CN -->\n- 仅包含简体与英文\n<!-- /lang -->\n<!-- lang:en -->\n- Simplified and English only\n<!-- /lang -->",
+                "assets": []
+              }
+            ]
+        """.trimIndent()
+        val parsed = AppUpdateService.parseReleases(json).single()
+        assertEquals("• 仅包含简体与英文", parsed.releaseNotesFor("zh-CN"))
+        assertEquals("• 仅包含简体与英文", parsed.releaseNotesFor("zh-HK"))
+        assertEquals("• Simplified and English only", parsed.releaseNotesFor("en"))
+        assertEquals("• Simplified and English only", parsed.releaseNotesFor("ja-JP"))
+        assertFalse(parsed.releaseNotes.contains("lang:"))
+    }
+
+    @Test
+    fun `parseAtomReleases preserves multi-language changelog sections`() {
+        val atom = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>tag:github.com,2008:Repository/1/v0.1.7</id>
+                <updated>2026-11-27T03:00:00Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/silorny/Huiguang-Pixiv/releases/tag/v0.1.7"/>
+                <title>Huiguang v0.1.7</title>
+                <content type="html">&lt;!-- lang:zh-CN --&gt;&lt;ul&gt;&lt;li&gt;修复问题&lt;/li&gt;&lt;/ul&gt;&lt;!-- lang:en --&gt;&lt;ul&gt;&lt;li&gt;Bug fixes&lt;/li&gt;&lt;/ul&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+        val parsed = AppUpdateService.parseAtomReleases(atom, "https://github.com/silorny/Huiguang-Pixiv").single()
+        assertEquals("• 修复问题", parsed.releaseNotesFor("zh-CN"))
+        assertEquals("• Bug fixes", parsed.releaseNotesFor("en"))
+        assertFalse(parsed.releaseNotes.contains("__LANG_MARKER__"))
+    }
+
+    @Test
+    fun `single language changelog passes through unchanged across locales`() {
+        val json = """
+            [
+              {
+                "tag_name": "v0.1.8",
+                "published_at": "2026-11-27T04:00:00Z",
+                "html_url": "https://github.com/silorny/Huiguang-Pixiv/releases/tag/v0.1.8",
+                "body": "- Fix English font rendering\n- Improve Chinese layout",
+                "assets": []
+              }
+            ]
+        """.trimIndent()
+        val parsed = AppUpdateService.parseReleases(json).single()
+        assertTrue(parsed.localizedReleaseNotes.isEmpty())
+        assertEquals("• Fix English font rendering\n• Improve Chinese layout", parsed.releaseNotesFor("zh-CN"))
+        assertEquals("• Fix English font rendering\n• Improve Chinese layout", parsed.releaseNotesFor("zh-HK"))
+        assertEquals("• Fix English font rendering\n• Improve Chinese layout", parsed.releaseNotesFor("en"))
     }
 }

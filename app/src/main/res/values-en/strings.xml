@@ -30,7 +30,7 @@
     <string name="profile_logged_in">Signed in</string>
     <string name="profile_logout">Sign out</string>
     <string name="profile_logout_confirm">Sign out?</string>
-    <string name="profile_logout_message">Your session cookie will be removed from this device.</string>
+    <string name="profile_logout_message">Your session cookie and local account caches (cached bookmarks/follows) will be removed from this device; Pixiv cloud bookmarks and local browsing history remain intact.</string>
     <string name="profile_group_content">Content</string>
     <string name="profile_r18">Show R-18</string>
     <string name="profile_r18_summary">Requires sign-in and R-18 enabled on Pixiv web</string>
@@ -257,13 +257,13 @@
     <string name="about_agreement_sec_service_title">Nature of Service</string>
     <string name="about_agreement_sec_service_body">Huiguang is an unofficial third-party Pixiv client intended solely for personal study, technical research, and daily browsing.\n\nAll artworks, rankings, Pixivision features, and account data displayed are fetched directly from Pixiv\'s official services; this app hosts or redistributes no content.</string>
     <string name="about_agreement_sec_network_title">Network Access &amp; Data Usage</string>
-    <string name="about_agreement_sec_network_body">Network permission is used to connect to official Pixiv (pixiv.net, pximg.net, embed.pixiv.net) and Pixivision (pixivision.net) services to load artwork details, media resources, novel contents, tag covers, and search results.\n\nWhen you explicitly tap Follow author or Bookmark work, the client communicates directly with Pixiv\'s official servers to sync state without forwarding any interaction records to third-party servers; favorited tags are saved locally only and are never uploaded or synced.\n\nWhen you visit the About page or explicitly tap Check for updates, the app sends an anonymous read-only request to GitHub (api.github.com, github.com, and *.githubusercontent.com) via an isolated clean HTTP client—without any Pixiv Referer, cookies, locale headers, or user/device identifiers—to fetch the developer\'s public profile, release metadata, or an APK installer you confirm to download. External links in About (repository, Telegram group, and open-source project homepages) are only opened or copied when you explicitly tap them.</string>
+    <string name="about_agreement_sec_network_body">Network permission is used to connect to official Pixiv (pixiv.net, pximg.net, embed.pixiv.net) and Pixivision (pixivision.net) services to load artwork details, media resources, novel contents, tag covers, and search results. Inside the official Pixiv sign-in WebView only, third-party login and bot-verification services integrated by Pixiv (Google, reCAPTCHA, Cloudflare, Apple, X) may be loaded as needed.\n\nWhen you explicitly tap Follow author or Bookmark work, the client communicates directly with Pixiv\'s official servers to sync state without forwarding any interaction records to third-party servers; favorited tags are saved locally only and are never uploaded or synced.\n\nWhen you visit the About page or explicitly tap Check for updates, the app sends an anonymous read-only request to GitHub (api.github.com, github.com, and *.githubusercontent.com) via an isolated clean HTTP client—without any Pixiv Referer, cookies, locale headers, or user/device identifiers—to fetch the developer\'s public profile, release metadata, or an APK installer you confirm to download. External links in About (repository, Telegram group, and open-source project homepages) are only opened or copied when you explicitly tap them.</string>
     <string name="about_agreement_sec_storage_title">Local Storage &amp; Credentials</string>
     <string name="about_agreement_sec_storage_body">Sign-in runs exclusively inside Pixiv\'s official web page. Your password is never seen, read, or stored; your session Cookie is encrypted locally using Android Keystore, and signing out clears the local encrypted session, WebView cookies/caches, local favorite/follow caches, account-scoped caches, and image/update caches.\n\nOriginal artworks and exported novel TXT files are written by default to the system public Download directory, or to a custom folder you authorize through the system file picker under Settings → Storage → Download location (which can be reset at any time).\n\nBrowsing history, favorited tags, custom share templates, reading typography, bookmark caches, skipped update version tags, home feed cache, image disk cache, and temporary APK update downloads are stored in private local app storage with cloud backup and device-to-device transfer disabled.</string>
     <string name="about_agreement_sec_privacy_title">Privacy Commitment &amp; Fair Use</string>
     <string name="about_agreement_sec_privacy_body">Huiguang operates no custom backend and collects, analyzes, or uploads zero behavioral data, device identifiers, or personal information.\n\nPlease use reasonable request rates and comply with Pixiv\'s Terms of Use. Users assume responsibility for any account risks from third-party client usage.</string>
     <string name="about_copyright_sec_works_title">Works &amp; Trademarks</string>
-    <string name="about_copyright_sec_works_body">"Pixiv", "Pixivision", and related logos and trademarks belong to Pixiv Inc.\n\nAll illustrations, manga, novels, covers, and embedded images displayed belong to their respective creators or rights holders.\n\nDo not use downloaded or exported works for commercial purposes, nor redistribute or repost them without explicit permission from the original author.</string>
+    <string name="about_copyright_sec_works_body">"Pixiv", "Pixivision", and related logos and trademarks belong to Pixiv Inc.\n\nAll illustrations, manga, novels, covers, and embedded images displayed belong to their respective creators or rights holders.\n\nThe app launcher artwork and project visual assets remain subject to their respective creator rights for app identification only; do not use downloaded or exported works for commercial purposes, nor redistribute or repost them without explicit permission from the original author.</string>
     <string name="about_copyright_sec_ui_title">Design Language &amp; UI Components</string>
     <string name="about_copyright_sec_ui_body">The user interface is built upon the open-source COUI-Kit project under MPL-2.0 and its upstream TRADEMARKS.md policy.\n\nAll "ColorOS" related names and trademarks belong to Guangdong OPPO Mobile Telecommunications Corp., Ltd.</string>
     <string name="about_copyright_sec_disclaimer_title">Disclaimer</string>
@@ -276,7 +276,7 @@
     <string name="license_notes_expand">Expand</string>
     <string name="license_notes_collapse">Collapse</string>
     <string name="license_coui_notes">COUI-Kit (coui &amp; coui-icons 0.0.1-alpha15) source code is licensed under Mozilla Public License 2.0 (MPL-2.0); per MPL-2.0 Section 3.2(a), the corresponding source code is available at the GitHub repository above. Certain Skia shadow geometry utilities are licensed under BSD-3-Clause, and the AndroidX search vector icon (Copyright 2025 The Android Open Source Project) is licensed under Apache License 2.0; reference system vectors and image assets retain the rights of OPPO / HeyTap / Android upstream owners.</string>
-    <string name="license_material_icons_notes">Vector action icons bundled in app resources (such as ic_restart_alt and ic_check) originate from Google Material Icons under Apache License 2.0.</string>
+    <string name="license_material_icons_notes">Vector action icons bundled in app resources (such as ic_check, ic_download, ic_export, ic_eye, ic_eye_off, ic_open_browser, ic_read_book, ic_restart_alt, ic_view_large) originate from Google Material Icons under Apache License 2.0.</string>
     <string name="license_view_bsd_text">View Skia BSD-3-Clause text</string>
     <string name="license_view_coui_notice">View COUI-Kit NOTICE text</string>
     <string name="about_ack_intro">Heartfelt thanks to the open-source projects, creators, and communities behind Huiguang:</string>
@@ -327,6 +327,10 @@
     <string name="bookmarks_moved_private">Moved to private bookmarks</string>
     <string name="bookmarks_moved_public">Moved to public bookmarks</string>
     <string name="author_uid_copied">UID copied</string>
+    <string name="author_external_link_title">Open external link</string>
+    <string name="author_external_link_message">You are leaving Huiguang to open an external webpage. Please verify the URL.</string>
+    <string name="author_external_link_open">Open page</string>
+    <string name="author_webpage_label">Homepage</string>
     <string name="detail_action_share">Share</string>
     <string name="settings_download_path">Download location</string>
     <string name="settings_share_format">Custom share format</string>
@@ -369,5 +373,14 @@
     <string name="update_permission_install">Allow Huiguang to install app updates</string>
     <string name="update_download_failed">Download failed: %1$s</string>
     <string name="update_no_apk_asset">No APK package attached; opening GitHub release page</string>
-    <string name="update_current_release_notes">• Multi-select home categories, faster waterfall loading, and dark-mode corner/stability fixes\n• Public/private bookmarks filter, waterfall/list view toggle, and swipe visibility controls\n• Unified metadata header (copyable PID/UID), author cover banner, and manga pagination\n• Rebuilt novel typography half-sheet, custom download folder, share templates, and in-app update sheet</string>
+    <string name="update_signature_mismatch">APK signature does not match this app; installation cancelled</string>
+    <string name="login_blocked_url">Blocked external navigation outside official sign-in pages</string>
+    <string name="author_bookmarks">Bookmarks</string>
+    <string name="bookmarks_author_empty">No public bookmarks yet</string>
+    <string name="detail_linked_info">Related info</string>
+    <string name="detail_linked_author_role">Artist</string>
+    <string name="detail_author_other_works">More by this artist</string>
+    <string name="detail_related_works">Related works</string>
+    <string name="detail_current_work">Current</string>
+    <string name="update_current_release_notes">Huiguang v0.1.4 Release Notes\n• Redesigned Author page: fused cover/avatar header, scroll-linked title bar, glowing link chips, clickable stats, and glitch-free swipe tabs\n• Upgraded Artwork detail: in-app caption links, works &amp; artists in Related info, "More by this artist" carousel, and Related works waterfall\n• Swipeable categories on Home &amp; Share Format, unified glow effects, flicker-free language switching, and matching press-ripple corners\n• Refined Update sheet native toolbar with localized release-note selection, plus network/intent hardening and updated legal disclosures</string>
 </resources>

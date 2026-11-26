@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.text.CouiTextKind
@@ -51,9 +52,13 @@ fun LinkedWorksSection(
     series: SeriesNav?,
     api: PixivApi,
     onOpen: (LinkedWork) -> Unit,
+    onOpenAuthor: ((String) -> Unit)? = null,
+    titleHorizontalPadding: Dp = 24.dp,
+    cardHorizontalPadding: Dp = 16.dp,
 ) {
     val colors = CouiPageDefaults.themeColors()
     val fallbackLabel = stringResource(R.string.linked_work_fallback)
+    val authorRoleLabel = stringResource(R.string.detail_linked_author_role)
     val linked = remember(descriptionHtml, currentKind, currentId) {
         parseLinkedWorks(descriptionHtml, currentKind, currentId)
     }
@@ -100,12 +105,14 @@ fun LinkedWorksSection(
         val resolved = LinkedHashMap<String, LinkedMeta>()
         visible.forEach { work ->
             val meta = runCatching {
-                if (work.kind == "novel") {
-                    api.novel(work.id)?.let {
+                when (work.kind) {
+                    "novel" -> api.novel(work.id)?.let {
                         LinkedMeta(it.title, it.coverUrl, it.userName, -1)
                     }
-                } else {
-                    api.illust(work.id)?.let {
+                    "author" -> api.user(work.id)?.let {
+                        LinkedMeta(it.name, it.avatarUrl, "", -2)
+                    }
+                    else -> api.illust(work.id)?.let {
                         LinkedMeta(it.title, it.thumbUrl, it.userName, it.illustType)
                     }
                 }
@@ -119,10 +126,10 @@ fun LinkedWorksSection(
 
     Spacer(Modifier.height(16.dp))
     Text(
-        text = stringResource(R.string.detail_linked_works),
+        text = stringResource(R.string.detail_linked_info),
         kind = CouiTextKind.GroupTitle,
         color = colors.summary,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+        modifier = Modifier.padding(horizontal = titleHorizontalPadding, vertical = 6.dp),
     )
     Column(
         Modifier.fillMaxWidth(),
@@ -130,16 +137,29 @@ fun LinkedWorksSection(
     ) {
         visible.forEach { work ->
             val meta = metadata["${work.kind}:${work.id}"]
-            val kind = if (work.kind == "novel") HistoryEntry.KIND_NOVEL else HistoryEntry.KIND_ILLUST
-            val illustType = meta?.illustType ?: if (work.kind == "novel") -1 else 0
-            WorkRow(
-                thumbUrl = meta?.thumbUrl.orEmpty(),
-                title = meta?.title?.ifBlank { work.label } ?: work.label.ifBlank { fallbackLabel },
-                author = meta?.userName.orEmpty(),
-                meta = "${work.label.ifBlank { fallbackLabel }} · " +
-                    workMeta(kind, illustType, work.id),
-                onClick = { onOpen(work) },
-            )
+            if (work.kind == "author") {
+                val roleLabel = work.label.ifBlank { authorRoleLabel }
+                WorkRow(
+                    thumbUrl = meta?.thumbUrl.orEmpty(),
+                    title = meta?.title?.ifBlank { roleLabel } ?: roleLabel,
+                    author = "",
+                    meta = "$roleLabel · UID ${work.id}",
+                    onClick = { onOpenAuthor?.invoke(work.id) ?: onOpen(work) },
+                    outerHorizontalPadding = cardHorizontalPadding,
+                )
+            } else {
+                val kind = if (work.kind == "novel") HistoryEntry.KIND_NOVEL else HistoryEntry.KIND_ILLUST
+                val illustType = meta?.illustType ?: if (work.kind == "novel") -1 else 0
+                WorkRow(
+                    thumbUrl = meta?.thumbUrl.orEmpty(),
+                    title = meta?.title?.ifBlank { work.label } ?: work.label.ifBlank { fallbackLabel },
+                    author = meta?.userName.orEmpty(),
+                    meta = "${work.label.ifBlank { fallbackLabel }} · " +
+                        workMeta(kind, illustType, work.id),
+                    onClick = { onOpen(work) },
+                    outerHorizontalPadding = cardHorizontalPadding,
+                )
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 package moe.huiguang.pixiv.data.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinkedWorksTest {
@@ -86,5 +87,47 @@ class LinkedWorksTest {
             emptyList<LinkedWork>(),
             visibleLinkedWorks(links, "novel", setOf("10"), hasSeries = true),
         )
+    }
+
+    @Test
+    fun parsesAuthorLinksAndPreservesAcrossSeriesFilter() {
+        val html = """合作：<a href="https://www.pixiv.net/users/92806916">某画师</a>，副号 user/12345，旧链接 member.php?id=556677，外链 https://x.com/user/999"""
+        val parsed = parseLinkedWorks(html, "illust", "4034019")
+        assertEquals(
+            listOf(
+                LinkedWork("author", "92806916", "某画师"),
+                LinkedWork("author", "12345", ""),
+                LinkedWork("author", "556677", ""),
+            ),
+            parsed,
+        )
+        assertEquals(
+            parsed,
+            visibleLinkedWorks(parsed, "illust", setOf("92806916"), hasSeries = true),
+        )
+    }
+
+    @Test
+    fun parsesCaptionContentInternalAndExternalLinks() {
+        val html = """参考 illust/4034019 与 user/92806916 还有 <a href="/novel/29726268">后续小说</a>，外链 <a href="/jump.php?https%3A%2F%2Fx.com%2Fpixiv_artist%3Fs%3D20">X</a> 及 https://afdian.com/a/demo。"""
+        val content = parseCaptionContent(html)
+        assertEquals(
+            listOf(
+                CaptionTarget.Illust("4034019"),
+                CaptionTarget.User("92806916"),
+                CaptionTarget.Novel("29726268"),
+                CaptionTarget.External("https://x.com/pixiv_artist?s=20"),
+                CaptionTarget.External("https://afdian.com/a/demo"),
+            ),
+            content.links.map { it.target },
+        )
+        content.links.forEach { link ->
+            assertTrue(link.start in 0 until link.end && link.end <= content.text.length)
+        }
+        assertEquals("illust/4034019", content.text.substring(content.links[0].start, content.links[0].end))
+        assertEquals("user/92806916", content.text.substring(content.links[1].start, content.links[1].end))
+        assertEquals("后续小说", content.text.substring(content.links[2].start, content.links[2].end))
+        assertEquals("X", content.text.substring(content.links[3].start, content.links[3].end))
+        assertEquals("https://afdian.com/a/demo", content.text.substring(content.links[4].start, content.links[4].end))
     }
 }

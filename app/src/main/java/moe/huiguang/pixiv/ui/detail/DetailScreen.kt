@@ -10,16 +10,19 @@ import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,17 +33,25 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
-import com.itos.coui.scroll.couiVerticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +77,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,23 +85,30 @@ import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.LoadingDialog
 import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageColors
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
+import com.itos.coui.menu.rememberCouiWindowBackdrop
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiColor
+import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.TopAppBarSurface
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.media.ImageDownloader
+import moe.huiguang.pixiv.data.model.CaptionTarget
 import moe.huiguang.pixiv.data.model.IllustDetail
 import moe.huiguang.pixiv.data.model.IllustPage
+import moe.huiguang.pixiv.data.model.SearchCategory
+import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.repo.EngagementEvent
@@ -97,6 +116,7 @@ import moe.huiguang.pixiv.data.repo.EngagementKind
 import moe.huiguang.pixiv.data.repo.EngagementRepository
 import moe.huiguang.pixiv.data.store.FavoriteEntry
 import moe.huiguang.pixiv.design.components.ActionNavItem
+import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.DetailSkeleton
 import moe.huiguang.pixiv.design.components.FloatingActionNavBar
@@ -108,10 +128,14 @@ import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.TagChip
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
+import moe.huiguang.pixiv.design.shape.CachedCouiShape
+import moe.huiguang.pixiv.ui.common.ExternalLinkConfirmDialog
 import moe.huiguang.pixiv.ui.common.IntroCard
 import moe.huiguang.pixiv.ui.common.LinkedWorksSection
 import moe.huiguang.pixiv.ui.common.SeriesSection
 import moe.huiguang.pixiv.ui.common.WorkMetaHeader
+import moe.huiguang.pixiv.ui.common.copyPlainText
+import moe.huiguang.pixiv.ui.common.openExternalUrl
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -154,11 +178,35 @@ fun DetailScreen(
     var reloadKey by remember { mutableIntStateOf(0) }
     var resumeTick by remember { mutableIntStateOf(0) }
     var avatar by remember(workId) { mutableStateOf<String?>(null) }
+    var authorWorks by remember(workId) {
+        mutableStateOf(cached?.detail?.let { mergeCurrentIntoNeighbors(it.authorNeighborWorks, it) } ?: emptyList())
+    }
+    var relatedWorks by remember(workId) { mutableStateOf<List<SearchItem>>(emptyList()) }
+    var relatedNextIds by remember(workId) { mutableStateOf<List<String>>(emptyList()) }
+    var relatedLoading by remember(workId) { mutableStateOf(false) }
+    var relatedLoadingMore by remember(workId) { mutableStateOf(false) }
+    var pendingExternalUrl by remember { mutableStateOf<String?>(null) }
+    var externalLinkDialogVisible by remember { mutableStateOf(false) }
 
+    val dark = CouiTheme.isDark
+    val windowBackdrop = rememberCouiWindowBackdrop()
+    val dialogMaterial = if (windowBackdrop != null) CouiDialogDefaults.material(dark) else null
     val bookmarkedIllusts by engagement.bookmarkedIllusts.collectAsState()
     val followedAuthors by engagement.followedAuthors.collectAsState()
     val isFavorite = bookmarkedIllusts[workId] ?: (detail?.bookmarkId != null)
     val settingsState by settings.state.collectAsState()
+
+    fun handleCaptionLink(target: CaptionTarget) {
+        when (target) {
+            is CaptionTarget.Illust -> onOpenLinked("illust", target.id)
+            is CaptionTarget.Novel -> onOpenLinked("novel", target.id)
+            is CaptionTarget.User -> onOpenAuthor(target.id)
+            is CaptionTarget.External -> {
+                pendingExternalUrl = target.url
+                externalLinkDialogVisible = true
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -248,8 +296,12 @@ fun DetailScreen(
     }
 
     LaunchedEffect(detail?.userId, resumeTick) {
-        val uid = detail?.userId ?: return@LaunchedEffect
-        avatar = cache.avatar(uid) ?: detail?.userAvatarUrl?.takeIf { it.isNotEmpty() }
+        val currentWork = detail ?: return@LaunchedEffect
+        val uid = currentWork.userId
+        avatar = cache.avatar(uid) ?: currentWork.userAvatarUrl.takeIf { it.isNotEmpty() }
+        if (currentWork.authorNeighborWorks.isNotEmpty() && authorWorks.size <= 1) {
+            authorWorks = mergeCurrentIntoNeighbors(currentWork.authorNeighborWorks, currentWork)
+        }
         runCatching { api.user(uid) }.getOrNull()?.let { u ->
             engagement.syncFollow(uid, u.isFollowed)
             if (avatar == null && u.avatarUrl.isNotEmpty()) {
@@ -257,6 +309,23 @@ fun DetailScreen(
                 avatar = u.avatarUrl
             }
         }
+        if (authorWorks.size < 5 && uid.isNotEmpty()) {
+            val fetched = runCatching { api.authorNeighborWorks(uid, workId, radius = 6) }.getOrNull()
+            if (!fetched.isNullOrEmpty() && fetched.size >= authorWorks.size) {
+                authorWorks = mergeCurrentIntoNeighbors(fetched, currentWork)
+            }
+        }
+    }
+
+    LaunchedEffect(workId, reloadKey) {
+        relatedLoading = true
+        runCatching { api.relatedIllustsInit(workId, limit = 18) }
+            .onSuccess { page ->
+                val seen = HashSet<String>().apply { add(workId) }
+                relatedWorks = page.items.filter { seen.add(it.id) }
+                relatedNextIds = page.nextIds.filter { it !in seen }
+            }
+        relatedLoading = false
     }
 
     fun toggleFollow() {
@@ -382,9 +451,32 @@ fun DetailScreen(
                     // the scrolling content that hosts it.
                     val effectBackdrop = rememberCouiBackdrop()
                     val effectDark = isDarkBackdrop(colors.background)
-                    val scroll = rememberScrollState()
+                    val gridState = rememberLazyStaggeredGridState()
+                    val overscroll = rememberCouiOverscrollEffect()
                     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     var currentCoverPage by rememberSaveable(workId) { mutableIntStateOf(0) }
+
+                    val nearRelatedEnd by remember(gridState, relatedWorks, relatedNextIds) {
+                        derivedStateOf {
+                            val info = gridState.layoutInfo
+                            info.totalItemsCount > 0 &&
+                                relatedNextIds.isNotEmpty() &&
+                                (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 6
+                        }
+                    }
+                    LaunchedEffect(nearRelatedEnd, relatedNextIds.size, relatedLoading, relatedLoadingMore) {
+                        if (nearRelatedEnd && !relatedLoading && !relatedLoadingMore && relatedNextIds.isNotEmpty()) {
+                            val batch = relatedNextIds.take(18)
+                            relatedLoadingMore = true
+                            runCatching { api.relatedIllustsByIds(batch) }
+                                .onSuccess { fresh ->
+                                    val known = relatedWorks.mapTo(HashSet()) { it.id }.apply { add(workId) }
+                                    relatedWorks = relatedWorks + fresh.filter { known.add(it.id) }
+                                    relatedNextIds = relatedNextIds.drop(batch.size)
+                                }
+                            relatedLoadingMore = false
+                        }
+                    }
 
                     Box(
                         Modifier
@@ -398,122 +490,242 @@ fun DetailScreen(
                             .couiBackdrop(backdrop)
                             .background(colors.background),
                     ) {
-                        Column(
-                            Modifier
+                        LazyVerticalStaggeredGrid(
+                            columns = StaggeredGridCells.Fixed(2),
+                            state = gridState,
+                            modifier = Modifier
                                 .fillMaxSize()
-                                .couiVerticalScroll(scroll),
+                                .overscroll(overscroll),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = 104.dp + navBottom,
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalItemSpacing = 12.dp,
                         ) {
-                            // Leave the status bar and the 52dp top bar clear, so the
-                            // cover starts below the two floating buttons.
-                            Spacer(Modifier.height(statusTop + 52.dp + 8.dp))
-                            CoverPager(
-                                detail = workDetail,
-                                pages = pages,
-                            colors = colors,
-                            backdrop = effectBackdrop,
-                            onPageChanged = { currentCoverPage = it },
-                            onOpenViewer = onOpenViewer,
-                        )
+                            item(span = StaggeredGridItemSpan.FullLine, key = "detail-header-body") {
+                                Column(Modifier.fillMaxWidth()) {
+                                    // Leave the status bar and the 52dp top bar clear, so the
+                                    // cover starts below the two floating buttons.
+                                    Spacer(Modifier.height(statusTop + 52.dp + 8.dp))
+                                    CoverPager(
+                                        detail = workDetail,
+                                        pages = pages,
+                                        colors = colors,
+                                        backdrop = effectBackdrop,
+                                        onPageChanged = { currentCoverPage = it },
+                                        onOpenViewer = onOpenViewer,
+                                        horizontalPadding = 0.dp,
+                                    )
 
-                        Spacer(Modifier.height(14.dp))
-                        Column(Modifier.padding(horizontal = 20.dp)) {
-                            // 1. work type + PID + publish date
-                            WorkMetaHeader(
-                                typeLabel = typeLabel(current.illustType),
-                                id = current.id,
-                                createDate = current.createDate,
-                            )
-                            Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(14.dp))
+                                    Column(Modifier.padding(horizontal = 4.dp)) {
+                                        // 1. work type + PID + publish date
+                                        WorkMetaHeader(
+                                            typeLabel = typeLabel(current.illustType),
+                                            id = current.id,
+                                            createDate = current.createDate,
+                                        )
+                                        Spacer(Modifier.height(8.dp))
 
-                            // 2. title
-                            BasicText(
-                                text = current.title.ifBlank { stringResource(R.string.untitled_work) },
-                                style = TextStyle(
-                                    color = colors.title,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    lineHeight = 28.sp,
-                                ),
-                            )
-                            Spacer(Modifier.height(12.dp))
+                                        // 2. title
+                                        BasicText(
+                                            text = current.title.ifBlank { stringResource(R.string.untitled_work) },
+                                            style = TextStyle(
+                                                color = colors.title,
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                lineHeight = 28.sp,
+                                            ),
+                                        )
+                                        Spacer(Modifier.height(12.dp))
 
-                            // 3. author
-                            AuthorRow(
-                                detail = current,
-                                avatar = avatar,
-                                colors = colors,
-                                isFollowed = followedAuthors[current.userId] == true,
-                                backdrop = effectBackdrop,
-                                dark = effectDark,
-                                onToggleFollow = { toggleFollow() },
-                                onClick = { onOpenAuthor(current.userId) },
-                            )
-                            Spacer(Modifier.height(12.dp))
+                                        // 3. author
+                                        AuthorRow(
+                                            detail = current,
+                                            avatar = avatar,
+                                            colors = colors,
+                                            isFollowed = followedAuthors[current.userId] == true,
+                                            backdrop = effectBackdrop,
+                                            dark = effectDark,
+                                            onToggleFollow = { toggleFollow() },
+                                            onClick = { onOpenAuthor(current.userId) },
+                                        )
+                                        Spacer(Modifier.height(12.dp))
 
-                            // 4. stats capsule (read-only segmented look)
-                            GlowStatCapsule(
-                                stats = listOf(
-                                    StatValue(number(current.viewCount), stringResource(R.string.detail_views)),
-                                    StatValue(number(current.bookmarkCount), stringResource(R.string.detail_bookmarks)),
-                                    StatValue(number(current.likeCount), stringResource(R.string.detail_likes)),
-                                ),
-                                backdrop = effectBackdrop,
-                                dark = effectDark,
-                            )
-                            // 5. caption
-                            val description = plainCaption(current.description)
-                            if (description.isNotEmpty()) {
-                                Spacer(Modifier.height(12.dp))
-                                IntroCard(text = description, colors = colors)
+                                        // 4. stats capsule (read-only segmented look)
+                                        GlowStatCapsule(
+                                            stats = listOf(
+                                                StatValue(number(current.viewCount), stringResource(R.string.detail_views)),
+                                                StatValue(number(current.bookmarkCount), stringResource(R.string.detail_bookmarks)),
+                                                StatValue(number(current.likeCount), stringResource(R.string.detail_likes)),
+                                            ),
+                                            backdrop = effectBackdrop,
+                                            dark = effectDark,
+                                        )
+                                        // 5. caption with clickable internal & external links
+                                        val description = plainCaption(current.description)
+                                        if (description.isNotEmpty()) {
+                                            Spacer(Modifier.height(12.dp))
+                                            IntroCard(
+                                                text = description,
+                                                colors = colors,
+                                                rawHtml = current.description,
+                                                onInternalLink = ::handleCaptionLink,
+                                                onExternalLink = { url ->
+                                                    pendingExternalUrl = url
+                                                    externalLinkDialogVisible = true
+                                                },
+                                            )
+                                        }
+                                    }
+
+                                    current.series?.let { series ->
+                                        Spacer(Modifier.height(16.dp))
+                                        SeriesSection(
+                                            series = series,
+                                            currentId = current.id,
+                                            isNovel = false,
+                                            api = api,
+                                            onOpenWork = { id -> onOpenLinked("illust", id) },
+                                            onOpenSeries = { onOpenSeries(series.seriesId, current.id) },
+                                            insetInGrid = true,
+                                        )
+                                    }
+
+                                    LinkedWorksSection(
+                                        descriptionHtml = current.description,
+                                        currentKind = "illust",
+                                        currentId = current.id,
+                                        series = current.series,
+                                        api = api,
+                                        onOpen = { work -> onOpenLinked(work.kind, work.id) },
+                                        onOpenAuthor = onOpenAuthor,
+                                        titleHorizontalPadding = 8.dp,
+                                        cardHorizontalPadding = 0.dp,
+                                    )
+
+                                    // 6. tags, wrapped
+                                    if (current.tags.isNotEmpty()) {
+                                        Spacer(Modifier.height(18.dp))
+                                        Text(
+                                            text = stringResource(R.string.detail_tags),
+                                            kind = CouiTextKind.GroupTitle,
+                                            color = colors.summary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        )
+                                        FlowRow(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            current.tags.forEach { tag ->
+                                                TagChip(text = tag, onClick = { onSearchTag(tag) })
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
 
-                        current.series?.let { series ->
-                            Spacer(Modifier.height(16.dp))
-                            SeriesSection(
-                                series = series,
-                                currentId = current.id,
-                                isNovel = false,
-                                api = api,
-                                onOpenWork = { id -> onOpenLinked("illust", id) },
-                                onOpenSeries = { onOpenSeries(series.seriesId, current.id) },
-                            )
-                        }
+                            // 7. author's neighboring works (3-card horizontal carousel centered on current)
+                            if (authorWorks.size > 1) {
+                                item(span = StaggeredGridItemSpan.FullLine, key = "author-other-works") {
+                                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.detail_author_other_works),
+                                            kind = CouiTextKind.GroupTitle,
+                                            color = colors.summary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        )
+                                        AuthorOtherWorksRow(
+                                            items = authorWorks,
+                                            currentId = current.id,
+                                            revealR18 = settingsState.revealR18,
+                                            colors = colors,
+                                            onOpenWork = { item ->
+                                                if (item.id != current.id) {
+                                                    onOpenLinked(
+                                                        if (item.category == SearchCategory.NOVEL) "novel" else "illust",
+                                                        item.id,
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
 
-                        LinkedWorksSection(
-                            descriptionHtml = current.description,
-                            currentKind = "illust",
-                            currentId = current.id,
-                            series = current.series,
-                            api = api,
-                            onOpen = { work -> onOpenLinked(work.kind, work.id) },
-                        )
+                            // 8. related works 2-column waterfall
+                            if (relatedWorks.isNotEmpty() || relatedLoading) {
+                                item(span = StaggeredGridItemSpan.FullLine, key = "related-works-header") {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.detail_related_works),
+                                            kind = CouiTextKind.GroupTitle,
+                                            color = colors.summary,
+                                            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 2.dp),
+                                        )
+                                    }
+                                }
+                            }
 
-                        // 6. tags, wrapped
-                        if (current.tags.isNotEmpty()) {
-                            Spacer(Modifier.height(18.dp))
-                            Text(
-                                text = stringResource(R.string.detail_tags),
-                                kind = CouiTextKind.GroupTitle,
-                                color = colors.summary,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
-                            )
-                            FlowRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                current.tags.forEach { tag ->
-                                    TagChip(text = tag, onClick = { onSearchTag(tag) })
+                            if (relatedLoading && relatedWorks.isEmpty()) {
+                                item(span = StaggeredGridItemSpan.FullLine, key = "related-loading") {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 24.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.search_loading),
+                                            kind = CouiTextKind.ItemSummary,
+                                            color = colors.summary,
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(
+                                    items = relatedWorks,
+                                    key = { "rel-${it.id}" },
+                                    contentType = { if (it.category == SearchCategory.NOVEL) "novel" else "artwork" },
+                                ) { item ->
+                                    ArtworkCard(
+                                        item = item,
+                                        revealR18 = settingsState.revealR18,
+                                        lowQualityThumb = true,
+                                        onClick = {
+                                            onOpenLinked(
+                                                if (item.category == SearchCategory.NOVEL) "novel" else "illust",
+                                                item.id,
+                                            )
+                                        },
+                                    )
+                                }
+                                if (relatedLoadingMore) {
+                                    item(span = StaggeredGridItemSpan.FullLine, key = "related-loading-more") {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.search_loading),
+                                                kind = CouiTextKind.ItemSummary,
+                                                color = colors.summary,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-
-                        // Clear space for the floating bottom Navigation bar.
-                        Spacer(Modifier.height(104.dp + navBottom))
-                    }
                 }
 
                 val workUrl = PixivApi.PAGE_URL + current.id
@@ -537,9 +749,7 @@ fun DetailScreen(
                     onToggleFavorite = { toggleFavorite() },
                     onDownload = { downloadAll() },
                     onOpenBrowser = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(workUrl)),
-                        )
+                        openExternalUrl(context, workUrl)
                     },
                     onCopyLink = {
                         val cm = context.getSystemService(ClipboardManager::class.java)
@@ -579,9 +789,7 @@ fun DetailScreen(
                             label = stringResource(R.string.detail_action_browser),
                             iconRes = R.drawable.ic_open_browser,
                             onClick = {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(PixivApi.PAGE_URL + current.id)),
-                                )
+                                openExternalUrl(context, PixivApi.PAGE_URL + current.id)
                             },
                         ),
                     ),
@@ -599,6 +807,26 @@ fun DetailScreen(
         visible = downloading != null,
         message = downloading ?: stringResource(R.string.search_loading),
     )
+
+    pendingExternalUrl?.let { url ->
+        ExternalLinkConfirmDialog(
+            visible = externalLinkDialogVisible,
+            url = url,
+            dark = dark,
+            colors = colors,
+            material = dialogMaterial,
+            backdrop = windowBackdrop,
+            onDismiss = { externalLinkDialogVisible = false },
+            onCopyUrl = {
+                copyPlainText(context, "caption_link", url, resources.getString(R.string.detail_link_copied))
+                externalLinkDialogVisible = false
+            },
+            onOpenUrl = {
+                externalLinkDialogVisible = false
+                openExternalUrl(context, url)
+            },
+        )
+    }
 }
 
 @Composable
@@ -714,6 +942,7 @@ private fun CoverPager(
     backdrop: com.itos.coui.backdrop.CouiBackdrop,
     onPageChanged: (Int) -> Unit,
     onOpenViewer: (Int) -> Unit,
+    horizontalPadding: Dp = 16.dp,
 ) {
     val pagerState = rememberPagerState(pageCount = { pages.size.coerceAtLeast(1) })
     LaunchedEffect(pagerState.currentPage) {
@@ -730,7 +959,7 @@ private fun CoverPager(
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = horizontalPadding),
     ) {
         val coverHeight = (maxWidth / ratio).coerceIn(180.dp, 520.dp)
         Box(
@@ -859,3 +1088,160 @@ private fun AuthorRow(
 @Composable
 private fun number(value: Int): String =
     NumberFormat.getIntegerInstance(LocalLocale.current.platformLocale).format(value)
+
+private val OtherWorkCardShape = CachedCouiShape(14.dp, 3f)
+private val OtherWorkBadgeShape = CachedCouiShape(7.dp, 3f)
+
+@Composable
+private fun AuthorOtherWorksRow(
+    items: List<SearchItem>,
+    currentId: String,
+    revealR18: Boolean,
+    colors: CouiPageColors,
+    onOpenWork: (SearchItem) -> Unit,
+) {
+    val currentIndex = remember(items, currentId) { items.indexOfFirst { it.id == currentId } }
+    val targetInitialIndex = remember(items, currentIndex) {
+        if (currentIndex < 0) 0 else (currentIndex - 1).coerceIn(0, (items.size - 3).coerceAtLeast(0))
+    }
+    val rowState = rememberLazyListState(initialFirstVisibleItemIndex = targetInitialIndex)
+    var centeredKey by remember(currentId) { mutableStateOf("") }
+    LaunchedEffect(currentId, items.size, targetInitialIndex) {
+        val keyStr = "$currentId:${items.size}:$targetInitialIndex"
+        if (items.isNotEmpty() && centeredKey != keyStr && !rowState.isScrollInProgress) {
+            centeredKey = keyStr
+            rowState.scrollToItem(targetInitialIndex)
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val spacing = 10.dp
+        val cardWidth = ((maxWidth - spacing * 2) / 3f).coerceAtLeast(88.dp)
+        LazyRow(
+            state = rowState,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+        ) {
+            items(items, key = { it.id }) { item ->
+                val isCurrent = item.id == currentId
+                val maskR18 = item.isAdult && !revealR18
+                Column(
+                    modifier = Modifier
+                        .width(cardWidth)
+                        .clip(OtherWorkCardShape)
+                        .clickable { onOpenWork(item) },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(OtherWorkCardShape)
+                            .background(colors.card)
+                            .then(
+                                if (isCurrent) Modifier.border(2.dp, colors.accent, OtherWorkCardShape)
+                                else Modifier,
+                            ),
+                    ) {
+                        RetryableImage(
+                            url = item.thumbUrl.ifBlank { item.fullUrl },
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (maskR18) {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xCC141418)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicText(
+                                    text = "R-18",
+                                    style = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    ),
+                                )
+                            }
+                        }
+                        if (isCurrent) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(6.dp)
+                                    .background(colors.accent, OtherWorkBadgeShape)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            ) {
+                                BasicText(
+                                    text = stringResource(R.string.detail_current_work),
+                                    style = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    ),
+                                )
+                            }
+                        } else if (item.pageCount > 1) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color(0x99000000), OtherWorkBadgeShape)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                            ) {
+                                BasicText(
+                                    text = "P·${item.pageCount}",
+                                    style = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    BasicText(
+                        text = item.title.ifBlank { stringResource(R.string.untitled_work) },
+                        style = TextStyle(
+                            color = if (isCurrent) colors.accent else colors.title,
+                            fontSize = 12.sp,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                            lineHeight = 16.sp,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun mergeCurrentIntoNeighbors(
+    neighbors: List<SearchItem>,
+    current: IllustDetail,
+): List<SearchItem> {
+    if (neighbors.any { it.id == current.id }) return neighbors
+    val self = SearchItem(
+        id = current.id,
+        category = if (current.illustType == 1) SearchCategory.MANGA else SearchCategory.ILLUST,
+        title = current.title,
+        thumbUrl = current.thumbUrl,
+        fullUrl = current.previewUrl,
+        userId = current.userId,
+        userName = current.userName,
+        xRestrict = current.xRestrict,
+        width = current.width,
+        height = current.height,
+        pageCount = current.pageCount,
+        textCount = 0,
+        tags = current.tags,
+        seriesTitle = current.series?.title,
+    )
+    return (neighbors + self)
+        .distinctBy { it.id }
+        .sortedByDescending { it.id.toLongOrNull() ?: 0L }
+}

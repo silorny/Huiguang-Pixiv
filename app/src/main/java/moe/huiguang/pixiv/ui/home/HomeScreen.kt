@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.overscroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -115,7 +117,6 @@ import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.RetryableImage
-import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.design.components.downgradeWaterfallThumbUrl
 
@@ -405,13 +406,28 @@ fun HomeScreen(
 
                 else -> {
                     val current = state as? HomeUiState.Content ?: return@Crossfade
+                    val pagerState = rememberPagerState(initialPage = section, pageCount = { 3 })
+                    LaunchedEffect(section) {
+                        if (pagerState.currentPage != section && pagerState.targetPage != section) {
+                            pagerState.animateScrollToPage(section)
+                        }
+                    }
+                    LaunchedEffect(pagerState) {
+                        snapshotFlow { pagerState.currentPage }
+                            .distinctUntilChanged()
+                            .collect { page -> if (tabState.section != page) tabState.section = page }
+                    }
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         Modifier
                             .fillMaxSize()
                             .nestedScroll(pullConnection),
                     ) {
-                        SlideSwitcher(index = section, modifier = Modifier.fillMaxSize()) { selected ->
+                        HorizontalPager(
+                            state = pagerState,
+                            beyondViewportPageCount = 0,
+                            modifier = Modifier.fillMaxSize(),
+                        ) { selected ->
                         val activeCategory = when (selected) {
                             1 -> rankingTab
                             2 -> followingFilter

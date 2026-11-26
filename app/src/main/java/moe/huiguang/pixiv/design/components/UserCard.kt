@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -37,7 +36,6 @@ import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
-import moe.huiguang.pixiv.design.shape.g2CornerMask
 
 private val UserCardShape = CachedCouiShape(18.dp, 3f)
 private val UserPreviewThumbShape = CachedCouiShape(12.dp, 3f)
@@ -53,14 +51,13 @@ fun UserCard(
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
-    val opaqueCardColor = colors.card.compositeOver(colors.background)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .background(colors.card, UserCardShape)
-            .g2CornerMask(UserCardShape, colors.background)
+            .clip(UserCardShape)
+            .background(colors.card)
             .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
@@ -138,8 +135,8 @@ fun UserCard(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .background(colors.background)
-                            .g2CornerMask(UserPreviewThumbShape, opaqueCardColor),
+                            .clip(UserPreviewThumbShape)
+                            .background(colors.background),
                     )
                 }
                 repeat(3 - user.recentWorks.take(3).size) {
