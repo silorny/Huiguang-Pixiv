@@ -9,6 +9,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import coil3.size.Precision
+import kotlinx.coroutines.Dispatchers
 import okio.Path.Companion.toOkioPath
 import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.net.PixivApi
@@ -73,6 +74,8 @@ class AppContainer(context: Context) {
         .components {
             add(OkHttpNetworkFetcherFactory(callFactory = { api.client }))
         }
+        .fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(6))
+        .decoderCoroutineContext(Dispatchers.IO.limitedParallelism(2))
         .memoryCache {
             MemoryCache.Builder()
                 .maxSizePercent(app, 0.25)

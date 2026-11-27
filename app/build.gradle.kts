@@ -47,8 +47,8 @@ android {
         applicationId = "moe.huiguang.pixiv"
         minSdk = 34
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.1.4"
+        versionCode = 18
+        versionName = "0.1.5"
     }
 
     val releaseSigning = if (signingValues.isNotEmpty()) {
@@ -95,6 +95,10 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose_compiler_config.conf"))
 }
 
 dependencies {

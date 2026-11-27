@@ -179,6 +179,7 @@
     <string name="filter_all">All</string>
     <string name="filter_illust">Illust</string>
     <string name="filter_manga">Manga</string>
+    <string name="filter_illust_manga">Illust / Manga</string>
     <string name="filter_novel">Novel</string>
     <string name="card_r18_masked">R-18</string>
     <string name="card_novel_words">Novel · %1$s chars</string>
@@ -382,5 +383,5 @@
     <string name="detail_author_other_works">More by this artist</string>
     <string name="detail_related_works">Related works</string>
     <string name="detail_current_work">Current</string>
-    <string name="update_current_release_notes">Huiguang v0.1.4 Release Notes\n• Redesigned Author page: fused cover/avatar header, scroll-linked title bar, glowing link chips, clickable stats, and glitch-free swipe tabs\n• Upgraded Artwork detail: in-app caption links, works &amp; artists in Related info, "More by this artist" carousel, and Related works waterfall\n• Swipeable categories on Home &amp; Share Format, unified glow effects, flicker-free language switching, and matching press-ripple corners\n• Refined Update sheet native toolbar with localized release-note selection, plus network/intent hardening and updated legal disclosures</string>
+    <string name="update_current_release_notes">Huiguang v0.1.5 Release Notes\n✨ What\'s New &amp; Improvements\n• Author Page Experience: Unified smooth scrolling across the bio, category bar, and work grids; switching between Illust, Manga, and Novel preserves each tab\'s scroll position without reloading, and improves contrast on the "Following" pill in dark mode.\n• Search Tab Interactions: Scrolling down smoothly shrinks the search bar alongside the right "More" button; focusing expands it full-width with a "Cancel" button and lets you exit search input directly with the system back gesture.\n• Search Results Upgrades: Added swipeable and clickable 3-tab paging across "Illust / Manga", "Novel", and "Authors", with a unified scroll-linked top bar and filter area.\n• Global Navigation &amp; State Retention: Unified top-left title collapse animations across "Home", "Search", and "Me"; switching between "Public / Private" bookmarks and changing History filters now keeps each tab\'s state and scroll position without reloading.\n🐛 Bug Fixes\n• Fixed Author Page Scroll Issues: Resolved getting stuck midway, erratic scrolling, or layout misplacement when scrolling back to the top after expanding a long bio or scrolling down the work list.\n• Fixed Author Work Grid Alignment: Resolved work grids not aligning properly to the top on initial load or after switching categories.\n• Fixed Home Section Switching Hang: Resolved getting stuck between "For You" and "Ranking" when tapping directly between "For You" and "Following" (or vice versa).</string>
 </resources>

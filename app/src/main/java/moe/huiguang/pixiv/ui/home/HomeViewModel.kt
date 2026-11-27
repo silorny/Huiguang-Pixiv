@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.huiguang.pixiv.BuildConfig
 import moe.huiguang.pixiv.data.model.HomeFeed
 import moe.huiguang.pixiv.data.model.RankingMode
@@ -317,7 +319,9 @@ class HomeViewModel(
             if (_state.value !is HomeUiState.Content) _state.value = HomeUiState.Loading
             val result = runCatching { (api.homeFeed() ?: api.fallbackFeed()).deduplicated() }
             result.onSuccess { feed ->
-                cache.save(owner, feed)
+                withContext(Dispatchers.IO) {
+                    cache.save(owner, feed)
+                }
                 _recommendedHeadCutoff.value = feed.recommended.size
                 _followingHeadCutoff.value = feed.following.size
                 _state.value = HomeUiState.Content(feed)

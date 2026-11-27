@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -47,12 +48,12 @@ fun RetryableImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     darkPlaceholder: Boolean = false,
+    placeholderColor: Color? = null,
     constrainToBounds: Boolean = true,
     allowRgb565: Boolean = false,
     maxDecodeSizePx: Int = 0,
 ) {
     val context = LocalContext.current
-    val colors = CouiPageDefaults.themeColors()
     var attempt by remember(url) { mutableIntStateOf(0) }
     var isError by remember(url, attempt) { mutableStateOf(false) }
     val sizeResolver = if (constrainToBounds && maxDecodeSizePx <= 0) rememberConstraintsSizeResolver() else null
@@ -74,24 +75,22 @@ fun RetryableImage(
             }
             .build()
     }
-    val placeholder = if (darkPlaceholder) {
+    val placeholder = placeholderColor ?: if (darkPlaceholder) {
         Color(0xFF121212)
     } else {
-        colors.background.copy(alpha = 0.5f)
+        CouiPageDefaults.themeColors().background.copy(alpha = 0.5f)
     }
+    val placeholderPainter = remember(placeholder) { ColorPainter(placeholder) }
 
     val painter = rememberAsyncImagePainter(
         model = request,
+        placeholder = placeholderPainter,
         contentScale = contentScale,
-        onState = { state ->
-            val nextError = state is AsyncImagePainter.State.Error
-            if (isError != nextError) isError = nextError
-        },
+        onSuccess = { if (isError) isError = false },
+        onError = { if (!isError) isError = true },
     )
     Box(
-        modifier = modifier
-            .let { if (sizeResolver != null) it.then(sizeResolver) else it }
-            .background(placeholder),
+        modifier = modifier.let { if (sizeResolver != null) it.then(sizeResolver) else it },
     ) {
         Image(
             painter = painter,
@@ -116,7 +115,7 @@ fun RetryableImage(
                     color = if (darkPlaceholder) {
                         Color(0xFFBBBBBB)
                     } else {
-                        colors.summary
+                        CouiPageDefaults.themeColors().summary
                     },
                     modifier = Modifier.padding(8.dp),
                 )

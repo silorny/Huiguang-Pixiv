@@ -178,6 +178,7 @@
     <string name="filter_all">全部</string>
     <string name="filter_illust">插畫</string>
     <string name="filter_manga">漫畫</string>
+    <string name="filter_illust_manga">插畫/漫畫</string>
     <string name="filter_novel">小說</string>
     <string name="card_r18_masked">R-18</string>
     <string name="card_novel_words">小說 · %1$s字</string>
@@ -381,5 +382,5 @@
     <string name="detail_author_other_works">作者的其他作品</string>
     <string name="detail_related_works">相關作品</string>
     <string name="detail_current_work">當前</string>
-    <string name="update_current_release_notes">繪光 v0.1.4 更新說明\n• 作者主頁重構：頁首圖頭像融合、上滑頂欄漸顯作者名、外鏈凝光標籤、關注/好友/收藏統計及分類左右滑動順滑不重載\n• 作品詳情頁升級：簡介支援內鏈應用程式內直達、關聯資訊兼容作品與作者、「作者的其他作品」畫廊與「相關作品」瀑布流\n• 首頁與自訂分享格式支援左右滑動切換分類，補全凝光視效、語言切換防閃黑畫面及長按圓角一致性\n• 優化檢查更新彈窗頂部欄與多語言更新說明識別，並完善私隱合規、明文攔截與登出清理機制</string>
+    <string name="update_current_release_notes">繪光 v0.1.5 更新說明\n✨ 新增與優化\n• 作者主頁體驗升級：個人簡介、分類欄與作品列表實現一體化順滑捲動；切換「插畫 / 漫畫 / 小說」時獨立保留瀏覽位置，不再重複載入；優化深色模式下「已關注」膠囊按鈕的視覺對比度。\n• 搜尋頁互動升級：列表下滑時搜尋框自動收起並與右側「更多」按鈕並排停靠；進入輸入態時平滑展開全寬並顯示「取消」按鈕，支援透過返回手勢直接退出搜尋。\n• 搜尋結果頁升級：支援「插畫 / 漫畫」「小說」「作者」三欄左右滑動與點擊切換，統一頂欄與篩選區的聯動樣式。\n• 全域導覽與狀態保留：統一「首頁」「搜尋」「我的」三大主頁大標題的捲動收起動效；個人收藏切換「公開 / 非公開」及瀏覽紀錄切換篩選條件時，保留當前頁面狀態與捲動位置，不再重載。\n🐛 問題修復\n• 修復作者主頁捲動異常：解決展開較長簡介或作品列表下滑後，上滑回頂時在半途卡死、滑動異常或位置錯亂的問題。\n• 修復作者主頁列表對齊問題：解決首次載入及切換分類後，作品列表頂部未正確對齊的問題。\n• 修復首頁分類切換卡頓：解決從「推薦」直接點擊切換至「關注新作」（或反向切換）時，頁面卡在「推薦」與「排行榜」之間的問題。</string>
 </resources>

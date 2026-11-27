@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -29,16 +30,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.data.model.UserSearchItem
-import moe.huiguang.pixiv.design.shape.CachedCouiShape
 
-private val UserCardShape = CachedCouiShape(18.dp, 3f)
-private val UserPreviewThumbShape = CachedCouiShape(12.dp, 3f)
+private val UserCardShape = RoundedCornerShape(18.dp)
+private val UserPreviewThumbShape = RoundedCornerShape(12.dp)
 
 /** Author card shown in the "作者" tab of search results. */
 @Composable
@@ -50,18 +49,18 @@ fun UserCard(
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
+    val cardIndication = rememberCouiCardIndication(UserCardShape, dark)
+    val placeholderColor = colors.background.copy(alpha = 0.5f)
     val haptics = LocalHapticFeedback.current
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(UserCardShape)
-            .background(colors.card)
-            .couiButtonFeedback(dark, interaction, list = true)
+            .background(colors.card, UserCardShape)
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = cardIndication,
                 role = Role.Button,
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -76,6 +75,7 @@ fun UserCard(
                     url = user.avatarUrl,
                     contentDescription = user.userName,
                     contentScale = ContentScale.Crop,
+                    placeholderColor = placeholderColor,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
@@ -132,6 +132,7 @@ fun UserCard(
                         url = work.thumbUrl,
                         contentDescription = work.title,
                         contentScale = ContentScale.Crop,
+                        placeholderColor = placeholderColor,
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)

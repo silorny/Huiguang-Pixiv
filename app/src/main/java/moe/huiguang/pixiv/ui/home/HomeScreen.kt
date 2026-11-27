@@ -69,6 +69,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -79,19 +80,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.imageLoader
+import coil3.request.Disposable
 import coil3.request.ImageRequest
 import coil3.request.allowRgb565
 import coil3.size.Precision
 import coil3.size.Size
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Group
@@ -103,6 +107,7 @@ import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.TopAppBarSurface
 import moe.huiguang.pixiv.R
@@ -113,12 +118,14 @@ import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.HomeFeedCache
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.ArtworkCard
+import moe.huiguang.pixiv.design.components.ArtworkCardOuterShape
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.design.components.downgradeWaterfallThumbUrl
+import moe.huiguang.pixiv.design.components.rememberCouiCardIndication
 
 internal const val HOME_FILTER_ILLUST = 1
 internal const val HOME_FILTER_MANGA = 2
@@ -169,6 +176,7 @@ fun rememberHomeTabState(): HomeTabState {
 fun HomeTopChrome(
     tabState: HomeTabState,
     backdrop: CouiBackdrop,
+    effectBackdrop: CouiBackdrop = backdrop,
     statusTop: Dp,
 ) {
     val section = tabState.section
@@ -316,6 +324,18 @@ fun HomeScreen(
 
     val density = LocalDensity.current
     val dark = CouiTheme.isDark
+    val cardIndication = rememberCouiCardIndication(ArtworkCardOuterShape, dark)
+    val baseTitleStyle = rememberCouiTextStyle(CouiTextKind.ItemTitle)
+    val baseSummaryStyle = rememberCouiTextStyle(CouiTextKind.ItemSummary)
+    val cardTitleStyle = remember(baseTitleStyle, colors.title) {
+        baseTitleStyle.copy(color = colors.title, textAlign = TextAlign.Start)
+    }
+    val cardSummaryStyle = remember(baseSummaryStyle, colors.summary) {
+        baseSummaryStyle.copy(color = colors.summary, textAlign = TextAlign.Start)
+    }
+    val cardAccentSummaryStyle = remember(cardSummaryStyle, colors.accent) {
+        cardSummaryStyle.copy(color = colors.accent)
+    }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -407,15 +427,29 @@ fun HomeScreen(
                 else -> {
                     val current = state as? HomeUiState.Content ?: return@Crossfade
                     val pagerState = rememberPagerState(initialPage = section, pageCount = { 3 })
+                    var animatingTo by remember { mutableStateOf<Int?>(null) }
                     LaunchedEffect(section) {
-                        if (pagerState.currentPage != section && pagerState.targetPage != section) {
-                            pagerState.animateScrollToPage(section)
+                        if (pagerState.currentPage != section || pagerState.currentPageOffsetFraction != 0f) {
+                            animatingTo = section
+                            try {
+                                pagerState.animateScrollToPage(section)
+                            } finally {
+                                animatingTo = null
+                            }
                         }
                     }
                     LaunchedEffect(pagerState) {
-                        snapshotFlow { pagerState.currentPage }
+                        snapshotFlow { Triple(pagerState.currentPage, pagerState.isScrollInProgress, animatingTo) }
                             .distinctUntilChanged()
-                            .collect { page -> if (tabState.section != page) tabState.section = page }
+                            .collect { (page, scrolling, target) ->
+                                if (target != null) {
+                                    if (!scrolling && page == target) {
+                                        animatingTo = null
+                                    }
+                                } else if (tabState.section != page) {
+                                    tabState.section = page
+                                }
+                            }
                     }
                 Box(Modifier.fillMaxSize()) {
                     Box(
@@ -465,22 +499,38 @@ fun HomeScreen(
                         val pageOverscroll = rememberCouiOverscrollEffect()
                         val appContext = LocalContext.current
 
-                        LaunchedEffect(gridState, visible, selected, activeCategory) {
-                            if (visible.isEmpty()) return@LaunchedEffect
+                        val latestVisible by rememberUpdatedState(visible)
+                        LaunchedEffect(gridState, selected, activeCategory) {
+                            val enqueuedUrls = HashSet<String>(96)
+                            val activePreloads = ArrayDeque<Pair<Int, Disposable>>(24)
                             snapshotFlow {
-                                gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                val visibleInfo = gridState.layoutInfo.visibleItemsInfo
+                                val first = visibleInfo.firstOrNull()?.index ?: 0
+                                val last = visibleInfo.lastOrNull()?.index ?: 0
+                                first to last
                             }
                                 .distinctUntilChanged()
-                                .collect { lastIndex ->
-                                    val start = (lastIndex - 2).coerceAtLeast(0)
-                                    val end = (lastIndex + 10).coerceAtMost(visible.size)
+                                .collectLatest { (firstIndex, lastIndex) ->
+                                    while (activePreloads.isNotEmpty() && activePreloads.first().first < firstIndex - 2) {
+                                        activePreloads.removeFirst().second.dispose()
+                                    }
+                                    val list = latestVisible
+                                    if (list.isEmpty()) return@collectLatest
+                                    // Wait briefly through peak fling velocity so stale HTTP/decode
+                                    // requests don't saturate OkHttp/Coil ahead of scrolled-past rows.
+                                    delay(65L)
+                                    if (enqueuedUrls.size > 240) enqueuedUrls.clear()
+                                    val start = (lastIndex + 1).coerceAtLeast(0)
+                                    val end = (lastIndex + 9).coerceAtMost(list.size)
+                                    if (start >= end) return@collectLatest
                                     val loader = appContext.imageLoader
                                     for (i in start until end) {
-                                        val item = visible[i]
+                                        val item = list[i]
                                         val raw = item.thumbUrl.ifBlank { item.fullUrl }
                                         if (raw.isBlank()) continue
                                         val url = downgradeWaterfallThumbUrl(raw)
-                                        loader.enqueue(
+                                        if (!enqueuedUrls.add(url)) continue
+                                        val disposable = loader.enqueue(
                                             ImageRequest.Builder(appContext)
                                                 .data(url)
                                                 .allowRgb565(true)
@@ -488,6 +538,7 @@ fun HomeScreen(
                                                 .precision(Precision.INEXACT)
                                                 .build(),
                                         )
+                                        activePreloads.addLast(i to disposable)
                                     }
                                 }
                         }
@@ -603,6 +654,12 @@ fun HomeScreen(
                                         item = item,
                                         revealR18 = settingsState.revealR18,
                                         lowQualityThumb = true,
+                                        colors = colors,
+                                        dark = dark,
+                                        cardIndication = cardIndication,
+                                        titleStyle = cardTitleStyle,
+                                        summaryStyle = cardSummaryStyle,
+                                        accentSummaryStyle = cardAccentSummaryStyle,
                                         onClick = { onOpenWork(item) },
                                     )
                                 }
@@ -875,8 +932,8 @@ private fun SectionHeader(
     )
 }
 
-private val PixivisionCardShape = moe.huiguang.pixiv.design.shape.CachedCouiShape(18.dp, 3f)
-private val PixivisionBadgeShape = moe.huiguang.pixiv.design.shape.CachedCouiShape(8.dp, 3f)
+private val PixivisionCardShape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
+private val PixivisionBadgeShape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
 
 @Composable
 private fun PixivisionCard(
@@ -886,16 +943,16 @@ private fun PixivisionCard(
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
     val interaction = remember { MutableInteractionSource() }
+    val cardIndication = rememberCouiCardIndication(PixivisionCardShape, dark)
     val haptics = LocalHapticFeedback.current
     Column(
         Modifier
             .width(236.dp)
             .clip(PixivisionCardShape)
             .background(colors.card, PixivisionCardShape)
-            .couiButtonFeedback(dark, interaction, list = true)
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = cardIndication,
                 role = Role.Button,
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -912,6 +969,7 @@ private fun PixivisionCard(
                 url = item.coverUrl,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
+                placeholderColor = colors.background.copy(alpha = 0.5f),
                 modifier = Modifier.fillMaxSize(),
             )
             if (item.category.isNotEmpty()) {

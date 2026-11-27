@@ -1,5 +1,6 @@
 package moe.huiguang.pixiv.design.components
 
+import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,22 +32,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.layout.CouiPageColors
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchCategory
 import moe.huiguang.pixiv.data.model.SearchItem
-import moe.huiguang.pixiv.design.shape.CachedCouiShape
 
-private val CardOuterShape = CachedCouiShape(20.dp, 3f)
-private val CardInnerShape = CachedCouiShape(14.dp, 3f)
-private val BadgeShape = CachedCouiShape(8.dp, 3f)
+internal val ArtworkCardOuterShape = RoundedCornerShape(20.dp)
+private val CardInnerShape = RoundedCornerShape(14.dp)
+private val BadgeShape = RoundedCornerShape(8.dp)
 private val BadgeTextStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
 
 private val WATERFALL_THUMB_RULES = listOf(
@@ -79,9 +81,19 @@ fun ArtworkCard(
     showAuthor: Boolean = true,
     revealR18: Boolean = true,
     lowQualityThumb: Boolean = false,
+    colors: CouiPageColors = CouiPageDefaults.themeColors(),
+    dark: Boolean = CouiTheme.isDark,
+    cardIndication: IndicationNodeFactory = rememberCouiCardIndication(ArtworkCardOuterShape, dark),
+    titleStyle: TextStyle = rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+        color = colors.title,
+        textAlign = TextAlign.Start,
+    ),
+    summaryStyle: TextStyle = rememberCouiTextStyle(CouiTextKind.ItemSummary).copy(
+        color = colors.summary,
+        textAlign = TextAlign.Start,
+    ),
+    accentSummaryStyle: TextStyle = summaryStyle.copy(color = colors.accent),
 ) {
-    val dark = CouiTheme.isDark
-    val colors = CouiPageDefaults.themeColors()
     val haptics = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
     val isNovel = item.category == SearchCategory.NOVEL
@@ -91,15 +103,20 @@ fun ArtworkCard(
     val maskR18 = item.isAdult && !revealR18
     val rawThumb = item.thumbUrl.ifBlank { item.fullUrl }
     val imageUrl = if (lowQualityThumb) downgradeWaterfallThumbUrl(rawThumb) else rawThumb
+    val description = remember(item.title, item.userName) {
+        when {
+            item.title.isNotBlank() && item.userName.isNotBlank() -> "${item.title} · ${item.userName}"
+            item.title.isNotBlank() -> item.title
+            else -> item.userName
+        }
+    }
 
     Column(
         modifier = modifier
-            .clip(CardOuterShape)
-            .background(colors.card)
-            .couiButtonFeedback(dark, interaction, list = true)
+            .background(colors.card, ArtworkCardOuterShape)
             .clickable(
                 interactionSource = interaction,
-                indication = null,
+                indication = cardIndication,
                 role = Role.Button,
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -117,15 +134,18 @@ fun ArtworkCard(
         ) {
             RetryableImage(
                 url = imageUrl,
-                contentDescription = listOf(item.title, item.userName)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
+                contentDescription = description,
                 contentScale = ContentScale.Crop,
+                placeholderColor = colors.background.copy(alpha = 0.5f),
                 allowRgb565 = lowQualityThumb,
-                maxDecodeSizePx = if (lowQualityThumb) 360 else 0,
+                maxDecodeSizePx = when {
+                    maskR18 -> 64
+                    lowQualityThumb -> 360
+                    else -> 0
+                },
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (maskR18) Modifier.blur(20.dp) else Modifier),
+                    .then(if (maskR18) Modifier.blur(8.dp) else Modifier),
             )
             if (maskR18) {
                 Box(
@@ -171,39 +191,35 @@ fun ArtworkCard(
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(
+        BasicText(
             text = item.title.ifBlank { stringResource(R.string.untitled_work) },
-            kind = CouiTextKind.ItemTitle,
-            color = colors.title,
+            style = titleStyle,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
         if (isNovel && !item.seriesTitle.isNullOrBlank()) {
-            Text(
+            BasicText(
                 text = item.seriesTitle.orEmpty(),
-                kind = CouiTextKind.ItemSummary,
-                color = colors.accent,
+                style = accentSummaryStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
         if (isNovel && item.description.isNotBlank()) {
-            Text(
+            BasicText(
                 text = item.description,
-                kind = CouiTextKind.ItemSummary,
-                color = colors.summary,
+                style = summaryStyle,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             )
         }
         if (showAuthor && item.userName.isNotBlank()) {
-            Text(
+            BasicText(
                 text = item.userName,
-                kind = CouiTextKind.ItemSummary,
-                color = colors.summary,
+                style = summaryStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),

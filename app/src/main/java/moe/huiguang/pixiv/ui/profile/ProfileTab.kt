@@ -3,6 +3,7 @@ package moe.huiguang.pixiv.ui.profile
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -134,13 +136,19 @@ fun ProfileTab(
     val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
         .asPaddingValues().calculateTopPadding()
 
-    Column(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .consumeWindowInsets(padding)
-            .couiVerticalScroll(scroll),
+            .consumeWindowInsets(padding),
     ) {
-        Spacer(Modifier.height(statusTop + 64.dp))
+        val minScrollHeight = maxHeight + 96.dp
+        Column(
+            Modifier
+                .fillMaxSize()
+                .couiVerticalScroll(scroll)
+                .heightIn(min = minScrollHeight),
+        ) {
+            Spacer(Modifier.height(statusTop + 64.dp))
         if (session == null) {
             Group(title = stringResource(R.string.profile_group_account)) {
                 Item(
@@ -238,6 +246,7 @@ fun ProfileTab(
 
         // Clear the floating navigation capsule, including at large font scales.
         Spacer(Modifier.height(padding.calculateBottomPadding() + 24.dp))
+        }
     }
 }
 

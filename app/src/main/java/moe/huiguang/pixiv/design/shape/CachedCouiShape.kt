@@ -94,8 +94,8 @@ data class CachedCouiShape(
 
     private companion object {
         val cachedUnitCurves = LruCache<CurveKey, FloatArray>(24)
-        val cachedOutlines = LruCache<OutlineKey, Outline>(128)
-        val cachedPunchouts = LruCache<OutlineKey, Path>(128)
+        val cachedOutlines = LruCache<OutlineKey, Outline>(256)
+        val cachedPunchouts = LruCache<OutlineKey, Path>(256)
 
         fun buildUnitCurve(r: Float, cornerWeight: Float): FloatArray {
             val weight = cornerWeight.toDouble()

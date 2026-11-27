@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -23,15 +25,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
-import moe.huiguang.pixiv.design.shape.CachedCouiShape
 
-private val WorkRowThumbShape = CachedCouiShape(12.dp, 3f)
-internal val WorkRowCardShape = CachedCouiShape(18.dp, 3f)
+private val WorkRowThumbShape = RoundedCornerShape(12.dp)
+internal val WorkRowCardShape = RoundedCornerShape(18.dp)
 
 /** Thumbnail row used by history, bookmarks and the series list. */
 @Composable
@@ -53,23 +53,21 @@ fun WorkRow(
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
     val cardShape = WorkRowCardShape
-    val clickModifier = Modifier
-        .couiButtonFeedback(dark, interaction, enabled, list = !surface)
-        .clickable(
-            interactionSource = interaction,
-            indication = null,
-            enabled = enabled,
-            role = Role.Button,
-            onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            },
-        )
+    val cardIndication = rememberCouiCardIndication(if (surface) cardShape else RectangleShape, dark)
+    val clickModifier = Modifier.clickable(
+        interactionSource = interaction,
+        indication = cardIndication,
+        enabled = enabled,
+        role = Role.Button,
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+    )
     val container = if (surface) {
         Modifier
             .padding(horizontal = outerHorizontalPadding, vertical = 6.dp)
-            .clip(cardShape)
-            .background(colors.card)
+            .background(colors.card, cardShape)
             .then(clickModifier)
             .padding(10.dp)
     } else {
@@ -119,6 +117,7 @@ internal fun WorkRowBody(
                 url = thumbUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                placeholderColor = colors.background.copy(alpha = 0.5f),
                 modifier = Modifier
                     .size(64.dp)
                     .clip(thumbShape)

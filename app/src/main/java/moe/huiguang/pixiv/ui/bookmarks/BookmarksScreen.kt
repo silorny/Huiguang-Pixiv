@@ -19,14 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.overscroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,8 +39,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -67,6 +71,8 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiColor
 import com.itos.coui.theme.CouiTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.BookmarkItem
@@ -77,7 +83,6 @@ import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.PrimaryButton
-import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.SwipeActionRow
 import moe.huiguang.pixiv.design.components.SwipeRevealController
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
@@ -110,9 +115,8 @@ private data class BookmarkFeedState(
 
 /**
  * Bookmarks: displays the signed-in user's Pixiv public/private cloud bookmarks,
- * supporting SegmentedControl + Menu switching between public/private visibility,
- * list/waterfall layout toggle, work category filter, and COUI metaball left-swipe
- * visibility toggle actions.
+ * keeping both visibility pages alive in a persistent [HorizontalPager] so
+ * SegmentedControl switches never recreate scroll views or trigger redundant reloads.
  */
 @Composable
 fun BookmarksScreen(
@@ -134,8 +138,21 @@ fun BookmarksScreen(
     val scope = rememberCoroutineScope()
 
     val isOtherUser = targetUserId != null
-    var visibility by rememberSaveable { mutableIntStateOf(0) } // 0 = public, 1 = private
-    val activeVisibility = if (isOtherUser) 0 else visibility
+    val pageCount = if (isOtherUser) 1 else 2
+    var savedVisibility by rememberSaveable { mutableIntStateOf(0) }
+    val visibilityPager = rememberPagerState(
+        initialPage = if (isOtherUser) 0 else savedVisibility.coerceIn(0, 1),
+        pageCount = { pageCount },
+    )
+    val activeVisibility by remember {
+        derivedStateOf { if (isOtherUser) 0 else visibilityPager.currentPage }
+    }
+    LaunchedEffect(visibilityPager) {
+        snapshotFlow { visibilityPager.settledPage }
+            .distinctUntilChanged()
+            .collect { savedVisibility = it }
+    }
+
     var filter by rememberSaveable { mutableIntStateOf(0) } // 0 = all, 1 = illust, 2 = manga, 3 = novel
     var isWaterfall by rememberSaveable { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -143,14 +160,27 @@ fun BookmarksScreen(
     var privateFeed by remember(targetUserId) { mutableStateOf(BookmarkFeedState()) }
     var resumeTick by remember { mutableIntStateOf(0) }
     val swipeController = remember { SwipeRevealController() }
+    val listStates = List(pageCount) { index ->
+        rememberSaveable(targetUserId, index, saver = LazyListState.Saver) { LazyListState() }
+    }
+    val gridStates = List(pageCount) { index ->
+        rememberSaveable(targetUserId, index, saver = LazyStaggeredGridState.Saver) { LazyStaggeredGridState() }
+    }
 
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val contentTopPadding = statusTop + 56.dp + 14.dp
 
     DisposableEffect(lifecycleOwner) {
+        var leftForeground = false
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> leftForeground = true
+                Lifecycle.Event.ON_RESUME -> if (leftForeground) {
+                    leftForeground = false
+                    resumeTick++
+                }
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -162,11 +192,12 @@ fun BookmarksScreen(
 
     val session = state.session
     val effectiveUid = targetUserId ?: session?.userId
-    LaunchedEffect(effectiveUid, session?.userId, activeVisibility, resumeTick) {
-        if (session == null) return@LaunchedEffect
-        val uid = effectiveUid ?: return@LaunchedEffect
-        val privateOnly = !isOtherUser && activeVisibility == 1
+
+    suspend fun fetchInitial(privateOnly: Boolean, force: Boolean) {
+        if (session == null) return
+        val uid = effectiveUid ?: return
         val current = if (privateOnly) privateFeed else publicFeed
+        if (!force && current.items != null) return
         if (current.items == null) {
             if (privateOnly) privateFeed = current.copy(error = null)
             else publicFeed = current.copy(error = null)
@@ -190,6 +221,19 @@ fun BookmarksScreen(
                     if (privateOnly) privateFeed = errored else publicFeed = errored
                 }
             }
+    }
+
+    // Load initial page only when needed; toggling visibility tabs never re-fetches loaded feeds.
+    LaunchedEffect(effectiveUid, session?.userId, activeVisibility) {
+        val privateOnly = !isOtherUser && activeVisibility == 1
+        fetchInitial(privateOnly = privateOnly, force = false)
+    }
+
+    LaunchedEffect(resumeTick) {
+        if (resumeTick > 0) {
+            val privateOnly = !isOtherUser && activeVisibility == 1
+            fetchInitial(privateOnly = privateOnly, force = true)
+        }
     }
 
     fun loadMore(targetVisibility: Int) {
@@ -295,6 +339,11 @@ fun BookmarksScreen(
         }
     }
 
+    val visibilityLabels = listOf(
+        stringResource(R.string.bookmarks_visibility_public),
+        stringResource(R.string.bookmarks_visibility_private),
+    )
+
     Box(
         Modifier
             .fillMaxSize()
@@ -313,36 +362,58 @@ fun BookmarksScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            SlideSwitcher(
-                index = activeVisibility,
-                modifier = Modifier.fillMaxSize(),
-            ) { selectedVisibility ->
-                val isPrivate = !isOtherUser && selectedVisibility == 1
-                val feed = if (isPrivate) privateFeed else publicFeed
-                val visibleItems = remember(feed.items, filter) {
-                    feed.items?.filter { matchesBookmarkFilter(it, filter) }
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(statusTop + 56.dp + 8.dp))
+                if (!isOtherUser && session != null) {
+                    SegmentedControl(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        backdrop = effectBackdrop,
+                        labels = visibilityLabels,
+                        selectedIndex = activeVisibility,
+                        onSelected = { target ->
+                            scope.launch { visibilityPager.animateScrollToPage(target) }
+                        },
+                    )
                 }
-                BookmarksContent(
-                    session = session != null,
-                    visibility = selectedVisibility,
-                    onVisibilityChange = { visibility = it },
-                    showVisibilitySwitch = !isOtherUser,
-                    isOtherUser = isOtherUser,
-                    isPrivate = isPrivate,
-                    isWaterfall = isWaterfall,
-                    revealR18 = state.revealR18,
-                    items = visibleItems,
-                    error = feed.error,
-                    loadingMore = feed.loadingMore,
-                    topPadding = contentTopPadding,
-                    bottomPadding = navBottom + 24.dp,
-                    effectBackdrop = effectBackdrop,
-                    swipeController = swipeController,
-                    onOpen = onOpen,
-                    onToggleVisibility = { item -> toggleVisibility(item, fromPrivate = isPrivate) },
-                    onLoadMore = { loadMore(selectedVisibility) },
-                    onRetry = { resumeTick++ },
-                )
+                HorizontalPager(
+                    state = visibilityPager,
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = !isOtherUser,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) { selectedVisibility ->
+                    val isPrivate = !isOtherUser && selectedVisibility == 1
+                    val feed = if (isPrivate) privateFeed else publicFeed
+                    val visibleItems = remember(feed.items, filter) {
+                        feed.items?.filter { matchesBookmarkFilter(it, filter) }
+                    }
+                    BookmarksContent(
+                        session = session != null,
+                        showVisibilitySwitch = !isOtherUser,
+                        isOtherUser = isOtherUser,
+                        isPrivate = isPrivate,
+                        isWaterfall = isWaterfall,
+                        revealR18 = state.revealR18,
+                        items = visibleItems,
+                        error = feed.error,
+                        loadingMore = feed.loadingMore,
+                        listState = listStates[selectedVisibility],
+                        gridState = gridStates[selectedVisibility],
+                        topPadding = 6.dp,
+                        bottomPadding = navBottom + 24.dp,
+                        effectBackdrop = effectBackdrop,
+                        swipeController = swipeController,
+                        onOpen = onOpen,
+                        onToggleVisibility = { item -> toggleVisibility(item, fromPrivate = isPrivate) },
+                        onLoadMore = { loadMore(selectedVisibility) },
+                        onRetry = {
+                            scope.launch { fetchInitial(privateOnly = isPrivate, force = true) }
+                        },
+                    )
+                }
             }
         }
 
@@ -366,14 +437,14 @@ fun BookmarksScreen(
                                 CouiMenuItem(
                                     value = MENU_VISIBILITY_PUBLIC,
                                     text = stringResource(R.string.bookmarks_visibility_public),
-                                    selected = visibility == 0,
+                                    selected = activeVisibility == 0,
                                 ),
                             )
                             add(
                                 CouiMenuItem(
                                     value = MENU_VISIBILITY_PRIVATE,
                                     text = stringResource(R.string.bookmarks_visibility_private),
-                                    selected = visibility == 1,
+                                    selected = activeVisibility == 1,
                                 ),
                             )
                         }
@@ -433,8 +504,8 @@ fun BookmarksScreen(
                         onItemClick = { item ->
                             menuExpanded = false
                             when (item.value) {
-                                MENU_VISIBILITY_PUBLIC -> visibility = 0
-                                MENU_VISIBILITY_PRIVATE -> visibility = 1
+                                MENU_VISIBILITY_PUBLIC -> scope.launch { visibilityPager.animateScrollToPage(0) }
+                                MENU_VISIBILITY_PRIVATE -> scope.launch { visibilityPager.animateScrollToPage(1) }
                                 MENU_LAYOUT_LIST -> isWaterfall = false
                                 MENU_LAYOUT_WATERFALL -> isWaterfall = true
                                 MENU_FILTER_ALL,
@@ -454,8 +525,6 @@ fun BookmarksScreen(
 @Composable
 private fun BookmarksContent(
     session: Boolean,
-    visibility: Int,
-    onVisibilityChange: (Int) -> Unit,
     showVisibilitySwitch: Boolean,
     isOtherUser: Boolean,
     isPrivate: Boolean,
@@ -464,6 +533,8 @@ private fun BookmarksContent(
     items: List<BookmarkItem>?,
     error: String?,
     loadingMore: Boolean,
+    listState: LazyListState,
+    gridState: LazyStaggeredGridState,
     topPadding: Dp,
     bottomPadding: Dp,
     effectBackdrop: CouiBackdrop,
@@ -476,34 +547,31 @@ private fun BookmarksContent(
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
     val overscroll = rememberCouiOverscrollEffect()
-    val listState = rememberLazyListState()
-    val gridState = rememberLazyStaggeredGridState()
+    val latestItems by rememberUpdatedState(items)
 
     LaunchedEffect(listState.isScrollInProgress) {
         if (listState.isScrollInProgress) swipeController.close()
     }
 
-    val nearEnd by remember(listState, gridState, isWaterfall, items) {
-        derivedStateOf {
-            val info = if (isWaterfall) {
-                val gridInfo = gridState.layoutInfo
-                gridInfo.totalItemsCount to (gridInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
+    LaunchedEffect(listState, gridState, isWaterfall) {
+        snapshotFlow {
+            if (latestItems.isNullOrEmpty()) {
+                false
+            } else if (isWaterfall) {
+                val info = gridState.layoutInfo
+                val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                info.totalItemsCount > 1 && last >= info.totalItemsCount - 5
             } else {
-                val listInfo = listState.layoutInfo
-                listInfo.totalItemsCount to (listInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
+                val info = listState.layoutInfo
+                val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                info.totalItemsCount > 1 && last >= info.totalItemsCount - 5
             }
-            val (total, last) = info
-            total > 0 && last >= total - 5
         }
-    }
-    LaunchedEffect(nearEnd) {
-        if (nearEnd) onLoadMore()
+            .distinctUntilChanged()
+            .filter { it }
+            .collect { onLoadMore() }
     }
 
-    val visibilityLabels = listOf(
-        stringResource(R.string.bookmarks_visibility_public),
-        stringResource(R.string.bookmarks_visibility_private),
-    )
     val emptyMessage = stringResource(
         when {
             isOtherUser -> R.string.bookmarks_author_empty
@@ -530,17 +598,8 @@ private fun BookmarksContent(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 12.dp,
             ) {
-                if (showVisibilitySwitch) {
-                    item(span = StaggeredGridItemSpan.FullLine, key = "visibility") {
-                        SegmentedControl(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            labels = visibilityLabels,
-                            selectedIndex = visibility,
-                            onSelected = onVisibilityChange,
-                        )
-                    }
+                item(span = StaggeredGridItemSpan.FullLine, key = "top-anchor") {
+                    Spacer(Modifier.height(0.dp))
                 }
                 when {
                     error != null -> item(span = StaggeredGridItemSpan.FullLine, key = "error") {
@@ -607,19 +666,13 @@ private fun BookmarksContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .overscroll(overscroll),
-                contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
+                contentPadding = PaddingValues(
+                    top = topPadding,
+                    bottom = bottomPadding,
+                ),
             ) {
-                if (showVisibilitySwitch) {
-                    item(key = "visibility") {
-                        SegmentedControl(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            labels = visibilityLabels,
-                            selectedIndex = visibility,
-                            onSelected = onVisibilityChange,
-                        )
-                    }
+                item(key = "top-anchor") {
+                    Spacer(Modifier.height(0.dp))
                 }
                 when {
                     error != null -> item(key = "error") {

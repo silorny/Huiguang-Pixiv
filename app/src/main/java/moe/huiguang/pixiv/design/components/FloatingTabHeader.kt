@@ -2,7 +2,6 @@ package moe.huiguang.pixiv.design.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -15,8 +14,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -29,11 +31,11 @@ import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.topappbar.TopAppBarSurface
 
 /**
- * Floating tab header shared by 首页 / 搜寻 / 我的.
+ * Floating tab header shared across the primary tabs (首页 / 搜寻 / 我的).
  *
- * Sits above the scrolling content: transparent at the top of the page, then
- * blurs in once the user scrolls. Uses a two-state animation (not a per-item
- * scroll offset) so the title never oscillates between sizes.
+ * Uses the exact same typography, 64.dp row geometry, GPU scale transform
+ * (`30.sp` -> `20.sp`), and spring curve as Home so switching bottom tabs
+ * never shifts the top-left title position, size, or collapse animation.
  */
 @Composable
 fun FloatingTabHeader(
@@ -46,21 +48,25 @@ fun FloatingTabHeader(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = CouiPageDefaults.themeColors()
-    val barAlpha by animateFloatAsState(
+    val collapseProgress by animateFloatAsState(
         targetValue = if (collapsed) 1f else 0f,
-        animationSpec = tween(200),
-        label = "tabBar",
+        animationSpec = spring(dampingRatio = 0.88f, stiffness = 460f),
+        label = "tabHeaderCollapse",
     )
-    val titleSize by animateFloatAsState(
-        targetValue = if (collapsed) collapsedSize.value else expandedSize.value,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
-        label = "tabTitle",
-    )
+    val baseTitleStyle = remember(colors.title, expandedSize) {
+        TextStyle(
+            color = colors.title,
+            fontSize = expandedSize,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+    val targetScale = (collapsedSize.value / expandedSize.value).coerceIn(0.4f, 1f)
     Box(
         Modifier
             .fillMaxWidth()
             .pointerInput(Unit) {},
     ) {
+        val barAlpha = collapseProgress.coerceIn(0f, 1f)
         if (barAlpha > 0.001f) {
             TopAppBarSurface(
                 modifier = Modifier.matchParentSize(),
@@ -81,11 +87,15 @@ fun FloatingTabHeader(
         ) {
             BasicText(
                 text = title,
-                style = TextStyle(
-                    color = colors.title,
-                    fontSize = titleSize.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
+                style = baseTitleStyle,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.graphicsLayer {
+                    val s = 1f + (targetScale - 1f) * collapseProgress.coerceIn(0f, 1f)
+                    scaleX = s
+                    scaleY = s
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
             )
             Spacer(Modifier.width(12.dp))
             actions()

@@ -15,18 +15,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.overscroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -44,15 +49,17 @@ import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
 import com.itos.coui.menu.rememberCouiWindowBackdrop
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.design.components.CircleIconButton
-import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.SwipeDeleteRow
 import moe.huiguang.pixiv.design.components.SwipeRevealController
 import moe.huiguang.pixiv.design.components.WorkRowBody
@@ -60,7 +67,11 @@ import moe.huiguang.pixiv.design.components.dismissSwipeOnOutsideTap
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import moe.huiguang.pixiv.ui.common.workMeta
 
-/** On-device lookup history, newest first, filtered by work type. */
+/**
+ * On-device lookup history, newest first, filtered by work type across a
+ * persistent 4-page [HorizontalPager] so switching filters never recreates
+ * or reloads list rows or thumbnails.
+ */
 @Composable
 fun HistoryScreen(
     settings: SettingsStore,
@@ -72,19 +83,30 @@ fun HistoryScreen(
     val backdrop = rememberCouiBackdrop()
     val effectBackdrop = rememberCouiBackdrop()
     val windowBackdrop = rememberCouiWindowBackdrop()
+    val scope = rememberCoroutineScope()
     val state by settings.state.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var savedFilter by rememberSaveable { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(initialPage = savedFilter, pageCount = { 4 })
+    val filter by remember { derivedStateOf { pagerState.currentPage } }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { savedFilter = it }
+    }
+
     val swipeController = remember { SwipeRevealController() }
-    val listState = rememberLazyListState()
-    val overscroll = com.itos.coui.scroll.rememberCouiOverscrollEffect()
+    val listStates = List(4) { index ->
+        rememberSaveable(index, saver = LazyListState.Saver) { LazyListState() }
+    }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     LaunchedEffect(filter) { swipeController.close() }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) swipeController.close()
+    val activeListState = listStates[filter]
+    LaunchedEffect(activeListState.isScrollInProgress) {
+        if (activeListState.isScrollInProgress) swipeController.close()
     }
 
     Box(
@@ -105,77 +127,86 @@ fun HistoryScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            SlideSwitcher(
-                index = filter,
-                modifier = Modifier.fillMaxSize(),
-            ) { selected ->
-                val entries = remember(state.history, selected) {
-                    state.history.filter { matchesHistoryFilter(it, selected) }
-                }
-                LazyColumn(
-                    state = listState,
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(statusTop + 56.dp + 8.dp))
+                SegmentedControl(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .overscroll(overscroll),
-                    contentPadding = PaddingValues(
-                        top = statusTop + 56.dp + 8.dp,
-                        bottom = navBottom + 24.dp,
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    backdrop = effectBackdrop,
+                    labels = listOf(
+                        stringResource(R.string.filter_all),
+                        stringResource(R.string.filter_illust),
+                        stringResource(R.string.filter_manga),
+                        stringResource(R.string.filter_novel),
                     ),
-                ) {
-                    item(key = "filter") {
-                        SegmentedControl(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            labels = listOf(
-                                stringResource(R.string.filter_all),
-                                stringResource(R.string.filter_illust),
-                                stringResource(R.string.filter_manga),
-                                stringResource(R.string.filter_novel),
-                            ),
-                            selectedIndex = filter,
-                            onSelected = { filter = it },
-                        )
+                    selectedIndex = filter,
+                    onSelected = { target ->
+                        scope.launch { pagerState.animateScrollToPage(target) }
+                    },
+                )
+                HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 3,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) { pageFilter ->
+                    val overscroll = rememberCouiOverscrollEffect()
+                    val pageListState = listStates[pageFilter]
+                    val entries = remember(state.history, pageFilter) {
+                        state.history.filter { matchesHistoryFilter(it, pageFilter) }
                     }
-                    if (entries.isEmpty()) {
-                        item(key = "empty") {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 72.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.history_empty),
-                                    kind = CouiTextKind.ItemSummary,
-                                    color = colors.summary,
-                                )
+                    LazyColumn(
+                        state = pageListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .overscroll(overscroll),
+                        contentPadding = PaddingValues(
+                            top = 4.dp,
+                            bottom = navBottom + 24.dp,
+                        ),
+                    ) {
+                        if (entries.isEmpty()) {
+                            item(key = "empty-$pageFilter") {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 72.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.history_empty),
+                                        kind = CouiTextKind.ItemSummary,
+                                        color = colors.summary,
+                                    )
+                                }
                             }
-                        }
-                    } else {
-                        items(
-                            items = entries,
-                            key = { "${it.kind}-${it.pid}" },
-                            contentType = { "historyRow" },
-                        ) { entry ->
-                            val rowKey = "${entry.kind}-${entry.pid}"
-                            SwipeDeleteRow(
-                                rowKey = rowKey,
-                                controller = swipeController,
-                                backdrop = effectBackdrop,
-                                onClick = { onOpen(entry) },
-                                onDelete = { settings.removeHistory(entry.pid, entry.kind) },
-                            ) {
-                                WorkRowBody(
-                                    thumbUrl = entry.thumbUrl,
-                                    title = entry.title,
-                                    author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
-                                    meta = workMeta(entry.kind, entry.illustType, entry.pid),
-                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                )
+                        } else {
+                            items(
+                                items = entries,
+                                key = { "${it.kind}-${it.pid}" },
+                                contentType = { "historyRow" },
+                            ) { entry ->
+                                val rowKey = "${entry.kind}-${entry.pid}"
+                                SwipeDeleteRow(
+                                    rowKey = rowKey,
+                                    controller = swipeController,
+                                    backdrop = effectBackdrop,
+                                    onClick = { onOpen(entry) },
+                                    onDelete = { settings.removeHistory(entry.pid, entry.kind) },
+                                ) {
+                                    WorkRowBody(
+                                        thumbUrl = entry.thumbUrl,
+                                        title = entry.title,
+                                        author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
+                                        meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                    )
+                                }
                             }
+                            item(key = "bottom-spacer-$pageFilter") { Spacer(Modifier.height(8.dp)) }
                         }
-                        item(key = "bottom-spacer") { Spacer(Modifier.height(8.dp)) }
                     }
                 }
             }
@@ -233,7 +264,7 @@ fun HistoryScreen(
                         onItemClick = { item ->
                             menuExpanded = false
                             if (item.value in 0..3) {
-                                filter = item.value
+                                scope.launch { pagerState.animateScrollToPage(item.value) }
                             } else if (item.value == 4) {
                                 confirmClear = true
                             }

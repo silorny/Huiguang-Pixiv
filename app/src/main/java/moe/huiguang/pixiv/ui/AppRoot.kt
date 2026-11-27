@@ -2,6 +2,7 @@ package moe.huiguang.pixiv.ui
 
 import android.app.Activity
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -25,12 +25,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,10 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -111,57 +105,7 @@ fun AppRoot(container: AppContainer) {
     val colors = CouiPageDefaults.themeColors()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val topBandHeight = statusTop + 216.dp
-    val bottomBandHeight = navBottom + 120.dp
-    val snapLayer = rememberGraphicsLayer()
-    val snapController = remember { BackdropSnapController() }
-    var snapSyncTick by remember { mutableIntStateOf(0) }
-    val activeScrollInProgress by remember(homeTabState, searchTabState, profileScrollState) {
-        derivedStateOf {
-            when (page) {
-                0 -> homeTabState.gridStates[homeTabState.section].isScrollInProgress
-                1 -> searchTabState.scrollState.isScrollInProgress
-                else -> profileScrollState.isScrollInProgress
-            }
-        }
-    }
-    var wasScrolling by remember { mutableStateOf(false) }
-    LaunchedEffect(activeScrollInProgress, page) {
-        if (!activeScrollInProgress && (wasScrolling || snapController.lastPage != page)) {
-            snapController.lastPage = page
-            snapController.forceNextCapture = true
-            snapSyncTick++
-        } else if (snapController.lastPage != page) {
-            snapController.lastPage = page
-            snapController.forceNextCapture = true
-            snapSyncTick++
-        }
-        wasScrolling = activeScrollInProgress
-        if (activeScrollInProgress) {
-            while (true) {
-                kotlinx.coroutines.delay(22L)
-                snapController.forceNextCapture = true
-                snapSyncTick++
-            }
-        }
-    }
-    // Split pageBackdrop into small top & bottom strip offscreen layers (-66% FBO RAM/DDR vs 1272x2772).
-    val topBackdrop = rememberCouiBackdrop {
-        snapSyncTick
-        if (snapLayer.size.width > 0 && snapLayer.size.height > 0) {
-            drawLayer(snapLayer)
-        }
-    }
-    val bottomBackdrop = rememberCouiBackdrop {
-        snapSyncTick
-        val layerH = snapLayer.size.height
-        if (snapLayer.size.width > 0 && layerH > 0) {
-            val yOffset = size.height - layerH.toFloat()
-            translate(top = yOffset) {
-                drawLayer(snapLayer)
-            }
-        }
-    }
+    val pageBackdrop = rememberCouiBackdrop()
     val flatEffectBackdrop = rememberCouiBackdrop()
     val contentPadding = PaddingValues(top = statusTop + 64.dp, bottom = navBottom + 88.dp)
     val horizontalInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
@@ -171,6 +115,16 @@ fun AppRoot(container: AppContainer) {
     var lastTapAt by remember { mutableLongStateOf(0L) }
     var lastTapTab by remember { mutableIntStateOf(-1) }
     val open: (Route) -> Unit = { route -> PageActivity.open(context, route) }
+
+    LaunchedEffect(page) {
+        if (page != 1 && searchTabState.searching) {
+            searchTabState.searching = false
+        }
+    }
+    BackHandler(page == 1 && searchTabState.searching) {
+        searchTabState.searching = false
+        searchTabState.query = ""
+    }
 
     val items = listOf(
         CouiNavigationItem(
@@ -190,8 +144,9 @@ fun AppRoot(container: AppContainer) {
         ),
     )
 
-    // Decoupled foreground + clipped/throttled pageBackdrop sibling for TopChrome and NavigationBar,
-    // paired with a static flat sibling backdrop for in-content floating controls.
+    // Single pageBackdrop sibling for TopChrome and NavigationBar relying on COUI's
+    // native in-window RenderNode dependency tracking, paired with a static flat
+    // sibling backdrop for static chrome buttons (e.g. HomeTopChrome's More button).
     Box(
         Modifier
             .fillMaxSize()
@@ -206,38 +161,8 @@ fun AppRoot(container: AppContainer) {
         )
         Box(
             Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(topBandHeight)
-                .couiBackdrop(topBackdrop),
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(bottomBandHeight)
-                .couiBackdrop(bottomBackdrop),
-        )
-        Box(
-            Modifier
                 .fillMaxSize()
-                .drawWithContent {
-                    snapSyncTick
-                    val nowNs = System.nanoTime()
-                    val shouldCapture = !activeScrollInProgress ||
-                        snapController.forceNextCapture ||
-                        (nowNs - snapController.lastCaptureNs) >= BACKDROP_SCROLL_CAPTURE_INTERVAL_NS
-                    if (shouldCapture) {
-                        snapLayer.record {
-                            this@drawWithContent.drawContent()
-                        }
-                        snapController.lastCaptureNs = nowNs
-                        snapController.forceNextCapture = false
-                        drawLayer(snapLayer)
-                    } else {
-                        drawContent()
-                    }
-                }
+                .couiBackdrop(pageBackdrop)
                 .background(colors.background),
         ) {
             pageStates.SaveableStateProvider(page) {
@@ -262,7 +187,6 @@ fun AppRoot(container: AppContainer) {
                         tabState = searchTabState,
                         effectBackdrop = flatEffectBackdrop,
                         scrollToTopTick = scrollToTopTicks[1],
-                        onSubmit = { query, mode -> searchRoute(query, mode)?.let(open) },
                         onOpenHistory = { entry -> open(entry.toRoute()) },
                     )
 
@@ -287,20 +211,22 @@ fun AppRoot(container: AppContainer) {
         when (page) {
             0 -> HomeTopChrome(
                 tabState = homeTabState,
-                backdrop = topBackdrop,
+                backdrop = pageBackdrop,
+                effectBackdrop = flatEffectBackdrop,
                 statusTop = statusTop,
             )
 
             1 -> SearchTopChrome(
                 tabState = searchTabState,
                 hasHistory = settingsState.history.isNotEmpty(),
-                backdrop = topBackdrop,
+                backdrop = pageBackdrop,
                 statusTop = statusTop,
+                onSubmit = { query, mode -> searchRoute(query, mode)?.let(open) },
             )
 
             else -> ProfileTopChrome(
                 scroll = profileScrollState,
-                backdrop = topBackdrop,
+                backdrop = pageBackdrop,
                 statusTop = statusTop,
             )
         }
@@ -359,21 +285,13 @@ fun AppRoot(container: AppContainer) {
                 },
         ) {
             NavigationBar(
-                backdrop = bottomBackdrop,
+                backdrop = pageBackdrop,
                 items = items,
                 selectedIndex = page,
                 onSelection = { page = it },
             )
         }
     }
-}
-
-private const val BACKDROP_SCROLL_CAPTURE_INTERVAL_NS = 22_000_000L
-
-private class BackdropSnapController {
-    var lastCaptureNs: Long = 0L
-    var lastPage: Int = -1
-    var forceNextCapture: Boolean = true
 }
 
 /** PID / author links open directly; everything else becomes a keyword or tag search. */
