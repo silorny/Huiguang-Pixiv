@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,7 +40,9 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -99,9 +102,10 @@ import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
 import com.itos.coui.menu.rememberCouiWindowBackdrop
+import com.itos.coui.navigation.CouiNavigationItem
+import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.scroll.CouiOverscrollEffect
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
@@ -124,9 +128,15 @@ import moe.huiguang.pixiv.data.repo.EngagementEvent
 import moe.huiguang.pixiv.data.repo.EngagementKind
 import moe.huiguang.pixiv.data.repo.EngagementRepository
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.computeAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
+import moe.huiguang.pixiv.design.rememberWindowSizeDp
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.ArtworkCardOuterShape
 import moe.huiguang.pixiv.design.components.CircleIconButton
+import moe.huiguang.pixiv.design.components.FloatingSegmentedControl
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.design.components.rememberCouiCardIndication
 import moe.huiguang.pixiv.ui.common.ExternalLinkConfirmDialog
@@ -247,6 +257,9 @@ fun AuthorScreen(
     val profileTopGap = 10.dp
     val collapseLeadPx = with(density) { 8.dp.toPx() }
     val topGapPx = with(density) { profileTopGap.toPx() }
+    val windowSize = rememberWindowSizeDp()
+    val isExpandedTwoPane = rememberIsLandscapeSplit()
+    val profilePaneScroll = rememberScrollState()
 
     var nameRowTopPx by remember(userId) { mutableFloatStateOf(0f) }
     var headerHeightPx by remember(userId) { mutableIntStateOf(0) }
@@ -268,10 +281,13 @@ fun AuthorScreen(
         }
     }
 
-    val showTopBarTitle by remember(collapseLeadPx, topGapPx) {
+    val showTopBarTitle by remember(collapseLeadPx, topGapPx, isExpandedTwoPane) {
         derivedStateOf {
-            nameRowTopPx > 0f &&
+            nameRowTopPx > 0f && if (isExpandedTwoPane) {
+                profilePaneScroll.value >= (nameRowTopPx - collapseLeadPx).coerceAtLeast(0f)
+            } else {
                 headerOffsetPx >= (nameRowTopPx + topGapPx - collapseLeadPx).coerceAtLeast(0f)
+            }
         }
     }
     val topBarTitleProgress by animateFloatAsState(
@@ -505,26 +521,22 @@ fun AuthorScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Layout(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clipToBounds()
-                    .overscroll(outerOverscroll),
-                content = {
+            if (isExpandedTwoPane) {
+                val rightPaneColumns = computeAdaptiveGridColumns(
+                    availableWidth = (windowSize.width - AdaptiveTokens.AuthorPaneWidth).coerceAtLeast(320.dp),
+                )
+                Row(Modifier.fillMaxSize()) {
                     Column(
                         Modifier
-                            .fillMaxWidth()
-                            .scrollable(
-                                state = headerScrollState,
-                                orientation = Orientation.Vertical,
-                                reverseDirection = true,
-                                overscrollEffect = outerOverscroll,
-                                flingBehavior = headerFling,
-                            )
+                            .width(AdaptiveTokens.AuthorPaneWidth)
+                            .fillMaxHeight()
+                            .overscroll(rememberCouiOverscrollEffect())
+                            .verticalScroll(profilePaneScroll)
                             .padding(
                                 top = topBarBottomDp + profileTopGap,
+                                bottom = navBottom + 24.dp,
                                 start = 16.dp,
-                                end = 16.dp,
+                                end = 8.dp,
                             ),
                     ) {
                         ProfileHeader(
@@ -556,75 +568,193 @@ fun AuthorScreen(
                                 linkDialogVisible = true
                             },
                         )
-                        SegmentedControl(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            backdrop = effectBackdrop,
-                            labels = listOf(
-                                stringResource(R.string.filter_illust),
-                                stringResource(R.string.filter_manga),
-                                stringResource(R.string.filter_novel),
-                            ),
-                            selectedIndex = filter,
-                            onSelected = { target ->
-                                scope.launch { pagerState.animateScrollToPage(target) }
-                            },
+                    }
+                    HorizontalPager(
+                        state = pagerState,
+                        beyondViewportPageCount = 2,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                    ) { pageFilter ->
+                        val categoryState = uiState.categories[pageFilter]
+                        AuthorWorksPage(
+                            userId = userId,
+                            pageFilter = pageFilter,
+                            categoryState = categoryState,
+                            gridState = gridStates[pageFilter],
+                            navBottom = navBottom,
+                            revealR18 = settingsState.revealR18,
+                            colors = colors,
+                            dark = dark,
+                            cardIndication = cardIndication,
+                            titleStyle = cardTitleStyle,
+                            summaryStyle = cardSummaryStyle,
+                            accentSummaryStyle = cardAccentSummaryStyle,
+                            columns = rightPaneColumns,
+                            topPadding = topBarBottomDp + 6.dp,
+                            onLoadMore = { vm.loadMore(pageFilter) },
+                            onOpenWork = onOpenWork,
                         )
                     }
-
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .nestedScroll(pagerCoordinator),
-                    ) {
-                        CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                            HorizontalPager(
-                                state = pagerState,
-                                beyondViewportPageCount = 2,
-                                modifier = Modifier.fillMaxSize(),
-                            ) { pageFilter ->
-                                val categoryState = uiState.categories[pageFilter]
-                                AuthorWorksPage(
+                }
+            } else {
+                Layout(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds()
+                        .overscroll(outerOverscroll),
+                    content = {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .scrollable(
+                                    state = headerScrollState,
+                                    orientation = Orientation.Vertical,
+                                    reverseDirection = true,
+                                    overscrollEffect = outerOverscroll,
+                                    flingBehavior = headerFling,
+                                )
+                                .padding(
+                                    top = topBarBottomDp + profileTopGap,
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                Modifier
+                                    .widthIn(max = 640.dp)
+                                    .fillMaxWidth(),
+                            ) {
+                                ProfileHeader(
                                     userId = userId,
-                                    pageFilter = pageFilter,
-                                    categoryState = categoryState,
-                                    gridState = gridStates[pageFilter],
-                                    navBottom = navBottom,
-                                    revealR18 = settingsState.revealR18,
-                                    colors = colors,
-                                    dark = dark,
-                                    cardIndication = cardIndication,
-                                    titleStyle = cardTitleStyle,
-                                    summaryStyle = cardSummaryStyle,
-                                    accentSummaryStyle = cardAccentSummaryStyle,
-                                    onLoadMore = { vm.loadMore(pageFilter) },
-                                    onOpenWork = onOpenWork,
+                                    profile = profile,
+                                    bookmarksCount = bookmarksCount,
+                                    error = errorText,
+                                    isFollowed = isFollowed,
+                                    onToggleFollow = {
+                                        if (settingsState.session == null) {
+                                            Toast.makeText(
+                                                context,
+                                                resources.getString(R.string.bookmarks_need_login),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        } else {
+                                            engagement.toggleFollow(userId)
+                                        }
+                                    },
+                                    onOpenFollowing = { onOpenProfileList(userId, "following") },
+                                    onOpenMyPixiv = { onOpenProfileList(userId, "mypixiv") },
+                                    onOpenBookmarks = { onOpenBookmarks(userId) },
+                                    backdrop = effectBackdrop,
+                                    dark = effectDark,
+                                    titleProgress = topBarTitleProgress,
+                                    onNameRowPositioned = { nameRowTopPx = it },
+                                    onRequestExternalLink = { link ->
+                                        pendingExternalLink = link
+                                        linkDialogVisible = true
+                                    },
                                 )
                             }
+                            Text(
+                                text = stringResource(R.string.author_works_title),
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.summary,
+                                modifier = Modifier
+                                    .widthIn(max = 640.dp)
+                                    .fillMaxWidth()
+                                    .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 10.dp),
+                            )
                         }
+
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .nestedScroll(pagerCoordinator),
+                        ) {
+                            CompositionLocalProvider(LocalOverscrollFactory provides null) {
+                                HorizontalPager(
+                                    state = pagerState,
+                                    beyondViewportPageCount = 2,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) { pageFilter ->
+                                    val categoryState = uiState.categories[pageFilter]
+                                    AuthorWorksPage(
+                                        userId = userId,
+                                        pageFilter = pageFilter,
+                                        categoryState = categoryState,
+                                        gridState = gridStates[pageFilter],
+                                        navBottom = navBottom + 64.dp,
+                                        revealR18 = settingsState.revealR18,
+                                        colors = colors,
+                                        dark = dark,
+                                        cardIndication = cardIndication,
+                                        titleStyle = cardTitleStyle,
+                                        summaryStyle = cardSummaryStyle,
+                                        accentSummaryStyle = cardAccentSummaryStyle,
+                                        onLoadMore = { vm.loadMore(pageFilter) },
+                                        onOpenWork = onOpenWork,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                ) { measurables, constraints ->
+                    val headerPlaceable = measurables[0].measure(
+                        constraints.copy(
+                            minWidth = constraints.maxWidth,
+                            minHeight = 0,
+                            maxHeight = Constraints.Infinity,
+                        ),
+                    )
+                    if (headerHeightPx != headerPlaceable.height) {
+                        headerHeightPx = headerPlaceable.height
                     }
-                },
-            ) { measurables, constraints ->
-                val headerPlaceable = measurables[0].measure(
-                    constraints.copy(
-                        minWidth = constraints.maxWidth,
-                        minHeight = 0,
-                        maxHeight = Constraints.Infinity,
-                    ),
-                )
-                if (headerHeightPx != headerPlaceable.height) {
-                    headerHeightPx = headerPlaceable.height
+                    val pagerPlaceable = measurables[1].measure(
+                        Constraints.fixed(constraints.maxWidth, constraints.maxHeight),
+                    )
+                    layout(constraints.maxWidth, constraints.maxHeight) {
+                        val offsetY = headerOffsetPx.roundToInt().coerceIn(0, headerPlaceable.height)
+                        val pagerTop = (headerPlaceable.height - offsetY).coerceAtLeast(0)
+                        pagerPlaceable.placeRelative(0, pagerTop)
+                        headerPlaceable.placeRelative(0, -offsetY)
+                    }
                 }
-                val pagerPlaceable = measurables[1].measure(
-                    Constraints.fixed(constraints.maxWidth, constraints.maxHeight),
+            }
+        }
+
+        if (!isExpandedTwoPane) {
+            val navItems = listOf(
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_illust),
+                    icon = CouiIcons.Outlined.Photo,
+                    selectedIcon = CouiIcons.Filled.Photo,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_manga),
+                    icon = CouiIcons.Outlined.Album,
+                    selectedIcon = CouiIcons.Filled.Album,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_novel),
+                    icon = CouiIcons.Filled.BookOpen,
+                    selectedIcon = CouiIcons.Filled.BookOpen,
+                ),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            ) {
+                NavigationBar(
+                    backdrop = backdrop,
+                    items = navItems,
+                    selectedIndex = filter,
+                    onSelection = { target ->
+                        scope.launch { pagerState.animateScrollToPage(target) }
+                    },
                 )
-                layout(constraints.maxWidth, constraints.maxHeight) {
-                    val offsetY = headerOffsetPx.roundToInt().coerceIn(0, headerPlaceable.height)
-                    val pagerTop = (headerPlaceable.height - offsetY).coerceAtLeast(0)
-                    pagerPlaceable.placeRelative(0, pagerTop)
-                    headerPlaceable.placeRelative(0, -offsetY)
-                }
             }
         }
 
@@ -645,6 +775,8 @@ fun AuthorScreen(
             onSelectFilter = { target ->
                 scope.launch { pagerState.animateScrollToPage(target) }
             },
+            showFloatingSwitcher = isExpandedTwoPane,
+            leftHanded = settingsState.leftHanded,
             titleProgress = topBarTitleProgress,
             onBack = onBack,
             onOpenBrowser = { openExternalUrl(context, authorUrl) },
@@ -698,6 +830,9 @@ private fun AuthorWorksPage(
     accentSummaryStyle: TextStyle,
     onLoadMore: () -> Unit,
     onOpenWork: (String, String) -> Unit,
+    columns: Int = rememberAdaptiveGridColumns(),
+    topPadding: Dp = 0.dp,
+    horizontalContentPadding: Dp = 16.dp,
 ) {
     val appContext = LocalContext.current
     val visibleWorks = categoryState.items
@@ -765,13 +900,13 @@ private fun AuthorWorksPage(
     }
 
     LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(2),
+        columns = StaggeredGridCells.Fixed(columns),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = 0.dp,
+            start = horizontalContentPadding,
+            end = horizontalContentPadding,
+            top = topPadding,
             bottom = 24.dp + navBottom,
         ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -856,6 +991,8 @@ private fun AuthorTopBar(
     backgroundColor: Color,
     filter: Int,
     onSelectFilter: (Int) -> Unit,
+    showFloatingSwitcher: Boolean,
+    leftHanded: Boolean,
     titleProgress: Float,
     onBack: () -> Unit,
     onOpenBrowser: () -> Unit,
@@ -867,6 +1004,19 @@ private fun AuthorTopBar(
     val topRisePx = with(density) { 12.dp.toPx() }
     var menuExpanded by remember { mutableStateOf(false) }
     val resolvedAlpha = titleProgress.coerceIn(0f, 1f)
+    val floatingSwitcher: @Composable () -> Unit = {
+        FloatingSegmentedControl(
+            labels = listOf(
+                stringResource(R.string.filter_illust),
+                stringResource(R.string.filter_manga),
+                stringResource(R.string.filter_novel),
+            ),
+            selectedIndex = filter,
+            onSelected = onSelectFilter,
+            backdrop = backdrop,
+            dark = dark,
+        )
+    }
     TopAppBarSurface(
         modifier = Modifier.fillMaxWidth(),
         backdrop = backdrop,
@@ -892,6 +1042,10 @@ private fun AuthorTopBar(
                 dark = dark,
                 blurRadius = 20f,
             )
+            if (showFloatingSwitcher && leftHanded) {
+                Spacer(Modifier.width(8.dp))
+                floatingSwitcher()
+            }
             Spacer(Modifier.width(4.dp))
             BasicText(
                 text = title,
@@ -910,6 +1064,10 @@ private fun AuthorTopBar(
                         translationY = (1f - resolvedAlpha) * topRisePx
                     },
             )
+            if (showFloatingSwitcher && !leftHanded) {
+                floatingSwitcher()
+                Spacer(Modifier.width(8.dp))
+            }
             Box {
                 CircleIconButton(
                     icon = CouiIcons.Filled.More,

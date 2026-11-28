@@ -11,12 +11,14 @@
    与 Pixiv Inc. 及任何设备厂商不存在官方隶属、授权、合作或背书关系。
 3. 「Pixiv」、「Pixivision」及相关标识与商标归 Pixiv Inc. 所有；「ColorOS」相关名称与商标
    归 OPPO 广东移动通信有限公司所有。
-4. 应用内展示的插画、漫画、小说正文、封面及配图版权均归对应原作者或权利人所有；应用启动图标与项目专属美术素材保留原作者与项目维护者相应权利。
+4. 应用内展示的插画、漫画、小说正文、封面及配图版权均归对应原作者或权利人所有；
+   应用启动图标（含 ic_launcher_foreground_art.png）与项目专属美术素材仅用于本客户端识别展示，
+   保留原作者与项目维护者相应权利，不适用代码区的 Apache-2.0 再分发授权。
 
 二、上游设计库与随附资源许可声明
 --------------------------------
 
-本应用用户界面基于开源项目 COUI-Kit（coui 与 coui-icons 0.0.1-alpha15）构建：
+本应用用户界面基于开源项目 COUI-Kit（coui 与 coui-icons 0.0.1-alpha22）构建：
 - 项目主页：https://github.com/ItosEO/COUI-Kit
 - 自有源代码许可：Mozilla Public License 2.0（MPL-2.0）
   依据 MPL-2.0 第 3.2(a) 条，COUI-Kit 对应版本源代码可通过上述 GitHub 仓库获取。
@@ -53,48 +55,53 @@
    - 版权归属：JetBrains s.r.o. and Compose Multiplatform Contributors
    - 主页：https://github.com/JetBrains/compose-multiplatform
 
-5. AndroidX & Jetpack Compose
+5. JetBrains Multiplatform AndroidX (lifecycle & savedstate)
+   - 许可协议：Apache-2.0
+   - 版权归属：JetBrains s.r.o. and The Android Open Source Project
+   - 主页：https://github.com/JetBrains/compose-multiplatform-core
+
+6. AndroidX & Jetpack Compose
    - 许可协议：Apache-2.0
    - 版权归属：The Android Open Source Project
    - 主页：https://developer.android.com/jetpack/compose
 
-6. Accompanist (DrawablePainter)
+7. Accompanist (DrawablePainter)
    - 许可协议：Apache-2.0
    - 版权归属：Google LLC
    - 主页：https://google.github.io/accompanist/
 
-7. OkHttp
+8. OkHttp
    - 许可协议：Apache-2.0
    - 版权归属：Square, Inc.
    - 主页：https://github.com/square/okhttp
 
-8. Okio
+9. Okio
    - 许可协议：Apache-2.0
    - 版权归属：Square, Inc.
    - 主页：https://square.github.io/okio/
 
-9. Coil
-   - 许可协议：Apache-2.0
-   - 版权归属：Coil Contributors
-   - 主页：https://coil-kt.github.io/coil/
+10. Coil
+    - 许可协议：Apache-2.0
+    - 版权归属：Coil Contributors
+    - 主页：https://coil-kt.github.io/coil/
 
-10. JSpecify
+11. JSpecify
     - 许可协议：Apache-2.0
     - 版权归属：The JSpecify Authors
     - 主页：https://jspecify.dev/
 
-11. Guava ListenableFuture
+12. Guava ListenableFuture
     - 许可协议：Apache-2.0
     - 版权归属：Google LLC
     - 主页：https://github.com/google/guava
 
-12. JetBrains Annotations
+13. JetBrains Annotations
     - 许可协议：Apache-2.0
     - 版权归属：JetBrains s.r.o.
     - 主页：https://github.com/JetBrains/java-annotations
 
-13. Material Icons (Vectors)
+14. Material Icons (Vectors)
     - 许可协议：Apache-2.0
     - 版权归属：Google LLC
     - 主页：https://github.com/google/material-design-icons
-    - 说明：用于应用内矢量操作与详情页图标（ic_check.xml、ic_download.xml、ic_export.xml、ic_eye.xml、ic_eye_off.xml、ic_open_browser.xml、ic_read_book.xml、ic_restart_alt.xml、ic_view_large.xml 等）
+    - 说明：用于应用内矢量操作与详情页图标（ic_check.xml、ic_download.xml、ic_export.xml、ic_eye.xml、ic_eye_off.xml、ic_heart_filled.xml、ic_heart_outlined.xml、ic_open_browser.xml、ic_read_book.xml、ic_restart_alt.xml、ic_view_large.xml）

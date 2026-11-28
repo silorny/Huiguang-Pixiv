@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
@@ -23,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -47,6 +50,7 @@ import moe.huiguang.pixiv.data.media.ImageDownloader
 import moe.huiguang.pixiv.data.store.AppLanguage
 import moe.huiguang.pixiv.data.store.SettingsStore
 import moe.huiguang.pixiv.data.store.ThemeMode
+import moe.huiguang.pixiv.design.AdaptiveTokens
 import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.design.components.SettingSelectRow
 import moe.huiguang.pixiv.design.components.SettingSwitchRow
@@ -60,7 +64,7 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit,
     onClearCaches: () -> Unit,
     onOpenShareFormat: () -> Unit = {},
-    onLoggedOut: () -> Unit = {},
+    onLoggedOut: () -> Unit = { settings.logout() },
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
@@ -93,12 +97,26 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(uri, flags)
-        }
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         val raw = uri.toString()
-        settings.setDownloadTreeUri(if (ImageDownloader.isDefaultDownloadUri(raw)) "" else raw)
+        val isDefault = ImageDownloader.isDefaultDownloadUri(raw)
+        val previousRaw = state.downloadTreeUri
+        if (previousRaw.isNotBlank() && previousRaw != raw) {
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(Uri.parse(previousRaw), flags)
+            }
+        }
+        if (isDefault) {
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(uri, flags)
+            }
+            settings.setDownloadTreeUri("")
+        } else {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+            }
+            settings.setDownloadTreeUri(raw)
+        }
     }
 
     Box(
@@ -117,8 +135,14 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .couiVerticalScroll(scroll, overscrollEffect = overscroll)
                     .padding(top = statusTop + 56.dp + 8.dp, bottom = navBottom + 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Group(title = stringResource(R.string.settings_account)) {
+                Column(
+                    Modifier
+                        .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                        .fillMaxWidth(),
+                ) {
+                    Group(title = stringResource(R.string.settings_account)) {
                     Item(
                         trailing = {
                             Text(
@@ -301,6 +325,7 @@ fun SettingsScreen(
                 }
 
                 Spacer(Modifier.height(24.dp))
+                }
             }
         }
 
@@ -323,7 +348,6 @@ fun SettingsScreen(
         confirmAction = CouiDialogAction(
             text = stringResource(R.string.action_confirm),
             onClick = {
-                settings.logout()
                 onLoggedOut()
                 confirmLogout = false
             },

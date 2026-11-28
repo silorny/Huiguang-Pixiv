@@ -92,12 +92,15 @@ import moe.huiguang.pixiv.data.repo.EngagementEvent
 import moe.huiguang.pixiv.data.repo.EngagementKind
 import moe.huiguang.pixiv.data.repo.EngagementRepository
 import moe.huiguang.pixiv.data.store.FavoriteEntry
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.CenteredReadableBox
 import moe.huiguang.pixiv.design.components.ActionNavItem
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.FloatingActionNavBar
 import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.GlowStatCapsule
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.TagChip
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
@@ -366,31 +369,23 @@ fun NovelDetailScreen(
                         )
                     }
                 } else if (current == null) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = error ?: stringResource(R.string.error_load_failed),
-                            kind = CouiTextKind.ItemSummary,
-                            color = colors.summary,
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        PrimaryButton(
-                            text = stringResource(R.string.action_retry),
-                            onClick = { reloadKey++ },
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Box(Modifier.clickable { onOpenAsIllust(novelId) }) {
-                            Text(
-                                text = stringResource(R.string.detail_try_illust),
-                                kind = CouiTextKind.ItemSummary,
-                                color = colors.accent,
-                            )
-                        }
-                    }
+                    RetryErrorState(
+                        error = error,
+                        onRetry = { reloadKey++ },
+                        backdrop = effectBackdrop,
+                        fillScreen = false,
+                        modifier = Modifier.padding(top = 48.dp),
+                        extraAction = {
+                            Spacer(Modifier.height(12.dp))
+                            Box(Modifier.clickable { onOpenAsIllust(novelId) }) {
+                                Text(
+                                    text = stringResource(R.string.detail_try_illust),
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = colors.accent,
+                                )
+                            }
+                        },
+                    )
                 } else {
                     NovelDetailContent(
                         novel = current,
@@ -661,11 +656,12 @@ private fun NovelDetailContent(
     val density = LocalDensity.current
     val titleShiftPx = with(density) { 26.dp.toPx() }
     val displayTitle = novel.title.ifBlank { stringResource(R.string.untitled_work) }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = 104.dp + navBottom),
-    ) {
+    CenteredReadableBox(maxWidth = AdaptiveTokens.ReadableMaxWidth) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 104.dp + navBottom),
+        ) {
         // Cover + title, top aligned.
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             AsyncImage(
@@ -829,6 +825,7 @@ private fun NovelDetailContent(
                     TagChip(text = tag, onClick = { onSearchTag(tag) })
                 }
             }
+        }
         }
     }
 }

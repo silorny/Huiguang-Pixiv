@@ -91,9 +91,11 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.TopAppBarSurface
 import java.text.NumberFormat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchCategory
@@ -105,16 +107,24 @@ import moe.huiguang.pixiv.data.model.TagMetadata
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.WindowWidthTier
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
+import moe.huiguang.pixiv.design.rememberWindowWidthTier
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.ArtworkCardOuterShape
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SlideSwitcher
 import moe.huiguang.pixiv.design.components.UserCard
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.design.components.downgradeWaterfallThumbUrl
+import moe.huiguang.pixiv.design.components.isRateLimitError
+import moe.huiguang.pixiv.design.components.rememberAdaptiveSegmentedControlWidth
 import moe.huiguang.pixiv.design.components.rememberCouiCardIndication
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
@@ -196,22 +206,25 @@ fun SearchResultsScreen(
         }
     }
 
-    suspend fun loadNextPage() {
+    fun triggerLoadNextPage(resetError: Boolean = false) {
         if (inFlight || endReached) return
+        if (!resetError && error != null) return
+        val keyAtStart = cacheKey
+        val pageToLoad = nextPage
         inFlight = true
         loading = true
         error = null
-        runCatching {
-            api.searchPage(
-                word = query,
-                mode = mode,
-                page = nextPage,
-                limit = 30,
-                order = sortOrder,
-                rating = ratingFilter,
-            )
-        }
-            .onSuccess { pageResult ->
+        scope.launch {
+            try {
+                val pageResult = api.searchPage(
+                    word = query,
+                    mode = mode,
+                    page = pageToLoad,
+                    limit = 30,
+                    order = sortOrder,
+                    rating = ratingFilter,
+                )
+                if (cacheKey != keyAtStart) return@launch
                 val known = items.map { it.category to it.id }.toSet()
                 val fresh = pageResult.items.filter { (it.category to it.id) !in known }
                 items = items + fresh
@@ -219,23 +232,37 @@ fun SearchResultsScreen(
                     tagMetadata = pageResult.tagMetadata
                 }
                 endReached = fresh.isEmpty()
-                nextPage += 1
+                nextPage = pageToLoad + 1
                 cache.put(
-                    cacheKey,
+                    keyAtStart,
                     SearchResultsCache.Entry(items, nextPage, endReached, tagMetadata),
                 )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (cacheKey == keyAtStart) {
+                    error = e.message ?: resources.getString(R.string.error_search_failed)
+                }
+            } finally {
+                if (cacheKey == keyAtStart) {
+                    loading = false
+                    inFlight = false
+                }
             }
-            .onFailure { error = it.message ?: resources.getString(R.string.error_search_failed) }
-        loading = false
-        inFlight = false
+        }
     }
 
-    suspend fun loadNextUsers() {
+    fun triggerLoadNextUsers(resetError: Boolean = false) {
         if (userLoading || userEnded || userRequiresLogin) return
+        if (!resetError && userError != null) return
+        val keyAtStart = cacheKey
+        val pageToLoad = userPage
         userLoading = true
         userError = null
-        runCatching { api.searchUsers(query, page = userPage) }
-            .onSuccess { result ->
+        scope.launch {
+            try {
+                val result = api.searchUsers(query, page = pageToLoad)
+                if (cacheKey != keyAtStart) return@launch
                 if (result.requiresLogin) {
                     userRequiresLogin = true
                     userEnded = true
@@ -244,15 +271,27 @@ fun SearchResultsScreen(
                     val fresh = result.users.filter { it.userId !in known }
                     users = users + fresh
                     userEnded = fresh.isEmpty()
-                    userPage += 1
+                    userPage = pageToLoad + 1
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (cacheKey == keyAtStart) {
+                    userError = e.message ?: resources.getString(R.string.error_search_failed)
+                }
+            } finally {
+                if (cacheKey == keyAtStart) {
+                    userLoading = false
                 }
             }
-            .onFailure { userError = it.message ?: resources.getString(R.string.error_search_failed) }
-        userLoading = false
+        }
     }
 
     LaunchedEffect(cacheKey) {
-        if (cached == null) loadNextPage()
+        inFlight = false
+        loading = cached == null
+        error = null
+        if (cached == null) triggerLoadNextPage(resetError = true)
         gridStates.forEach { state ->
             if (state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0) {
                 scope.launch { state.scrollToItem(0) }
@@ -266,12 +305,12 @@ fun SearchResultsScreen(
     val activeFilter = if (isKeywordMode) keywordPagerState.currentPage else filter
     val userTabSelected = if (isKeywordMode) activeFilter == 2 else activeFilter == 4
     LaunchedEffect(userTabSelected, settingsState.session?.userId) {
-        if (userTabSelected && users.isEmpty() && !userLoading && !userEnded) {
-            loadNextUsers()
+        if (userTabSelected && users.isEmpty() && !userLoading && !userEnded && userError == null) {
+            triggerLoadNextUsers()
         } else if (userTabSelected && userRequiresLogin && settingsState.session != null) {
             userRequiresLogin = false
             userEnded = false
-            loadNextUsers()
+            triggerLoadNextUsers(resetError = true)
         }
     }
 
@@ -316,9 +355,11 @@ fun SearchResultsScreen(
                             overscroll = overscroll,
                             topPadding = listTopPadding,
                             bottomPadding = navBottom + 24.dp,
+                            surfaceBackdrop = surfaceBackdrop,
                             onOpenAuthor = onOpenAuthor,
                             onLogin = onLogin,
-                            onLoadMore = { scope.launch { loadNextUsers() } },
+                            onLoadMore = { triggerLoadNextUsers() },
+                            onRetry = { triggerLoadNextUsers(resetError = true) },
                         )
                     } else {
                         val visible = remember(items, selected) {
@@ -340,13 +381,14 @@ fun SearchResultsScreen(
                             overscroll = overscroll,
                             topPadding = listTopPadding,
                             bottomPadding = navBottom + 24.dp,
+                            surfaceBackdrop = surfaceBackdrop,
                             colors = colors,
                             dark = dark,
                             cardIndication = cardIndication,
                             titleStyle = cardTitleStyle,
                             summaryStyle = cardSummaryStyle,
                             accentSummaryStyle = cardAccentSummaryStyle,
-                            onLoadNextPage = { loadNextPage() },
+                            onLoadNextPage = { reset -> triggerLoadNextPage(resetError = reset) },
                             onOpenWork = onOpenWork,
                         )
                     }
@@ -367,9 +409,11 @@ fun SearchResultsScreen(
                             overscroll = overscroll,
                             topPadding = listTopPadding,
                             bottomPadding = navBottom + 24.dp,
+                            surfaceBackdrop = surfaceBackdrop,
                             onOpenAuthor = onOpenAuthor,
                             onLogin = onLogin,
-                            onLoadMore = { scope.launch { loadNextUsers() } },
+                            onLoadMore = { triggerLoadNextUsers() },
+                            onRetry = { triggerLoadNextUsers(resetError = true) },
                         )
                     } else {
                         val visible = remember(items, selected) {
@@ -400,13 +444,14 @@ fun SearchResultsScreen(
                             overscroll = overscroll,
                             topPadding = listTopPadding,
                             bottomPadding = navBottom + 24.dp,
+                            surfaceBackdrop = surfaceBackdrop,
                             colors = colors,
                             dark = dark,
                             cardIndication = cardIndication,
                             titleStyle = cardTitleStyle,
                             summaryStyle = cardSummaryStyle,
                             accentSummaryStyle = cardAccentSummaryStyle,
-                            onLoadNextPage = { loadNextPage() },
+                            onLoadNextPage = { reset -> triggerLoadNextPage(resetError = reset) },
                             onOpenWork = onOpenWork,
                             headerContent = {
                                 TagHeaderCard(
@@ -499,6 +544,7 @@ fun SearchResultsScreen(
                 },
                 backdrop = backdrop,
                 dark = dark,
+                leftHanded = settingsState.leftHanded,
                 onBack = onBack,
                 menuExpanded = optionsMenuOpen,
                 onMenuOpenChange = { optionsMenuOpen = it },
@@ -566,6 +612,7 @@ private fun KeywordSearchOverlayHeader(
     onSectionSelected: (Int) -> Unit,
     backdrop: CouiBackdrop,
     dark: Boolean,
+    leftHanded: Boolean,
     onBack: () -> Unit,
     menuExpanded: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
@@ -574,6 +621,7 @@ private fun KeywordSearchOverlayHeader(
 ) {
     val colors = CouiPageDefaults.themeColors()
     val density = LocalDensity.current
+    val isLandscapeSplit = rememberIsLandscapeSplit()
     val collapseProgressState = animateFloatAsState(
         targetValue = if (collapsed) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.88f, stiffness = 460f),
@@ -583,6 +631,7 @@ private fun KeywordSearchOverlayHeader(
     val switcherBaseTopPx = with(density) { (statusTop + 64.dp + 6.dp).roundToPx() }
     val defaultSidePadPx = with(density) { 16.dp.roundToPx() }
     val collapsedSidePadPx = with(density) { (16.dp + 40.dp + 10.dp).roundToPx() }
+    val switcherMaxWidthPx = with(density) { AdaptiveTokens.SwitcherMaxWidth.roundToPx() }
 
     Box(Modifier.fillMaxWidth()) {
         Box(
@@ -657,25 +706,39 @@ private fun KeywordSearchOverlayHeader(
                 .layout { measurable, constraints ->
                     val p = collapseProgressState.value.coerceIn(0f, 1f)
                     val sidePx = (defaultSidePadPx + (collapsedSidePadPx - defaultSidePadPx) * p).toInt()
-                    val childW = (constraints.maxWidth - sidePx * 2).coerceAtLeast(0)
-                    val placeable = measurable.measure(
-                        constraints.copy(minWidth = childW, maxWidth = childW),
-                    )
+                    val availableW = (constraints.maxWidth - sidePx * 2).coerceAtLeast(0)
+                    val placeable = if (isLandscapeSplit) {
+                        measurable.measure(constraints.copy(minWidth = 0, maxWidth = availableW))
+                    } else {
+                        val childW = availableW.coerceAtMost(switcherMaxWidthPx)
+                        measurable.measure(constraints.copy(minWidth = childW, maxWidth = childW))
+                    }
+                    val offsetX = when {
+                        !isLandscapeSplit -> sidePx + (availableW - placeable.width) / 2
+                        leftHanded -> sidePx
+                        else -> sidePx + availableW - placeable.width
+                    }
                     layout(constraints.maxWidth, switcherBaseTopPx + placeable.height) {
-                        placeable.placeRelative(sidePx, switcherBaseTopPx)
+                        placeable.placeRelative(offsetX, switcherBaseTopPx)
                     }
                 }
                 .graphicsLayer {
                     translationY = switcherShiftYPx * collapseProgressState.value.coerceIn(0f, 1f)
                 },
         ) {
+            val searchLabels = listOf(
+                stringResource(R.string.filter_illust_manga),
+                stringResource(R.string.filter_novel),
+                stringResource(R.string.search_filter_author),
+            )
+            val switcherModifier = if (isLandscapeSplit) {
+                Modifier.width(rememberAdaptiveSegmentedControlWidth(searchLabels))
+            } else {
+                Modifier.fillMaxWidth()
+            }
             SegmentedControl(
-                modifier = Modifier.fillMaxWidth(),
-                labels = listOf(
-                    stringResource(R.string.filter_illust_manga),
-                    stringResource(R.string.filter_novel),
-                    stringResource(R.string.search_filter_author),
-                ),
+                modifier = switcherModifier,
+                labels = searchLabels,
                 selectedIndex = selectedSection,
                 onSelected = onSectionSelected,
                 backdrop = backdrop,
@@ -715,17 +778,17 @@ private fun SearchWorkGridPage(
     overscroll: CouiOverscrollEffect,
     topPadding: Dp,
     bottomPadding: Dp,
+    surfaceBackdrop: CouiBackdrop,
     colors: com.itos.coui.layout.CouiPageColors,
     dark: Boolean,
     cardIndication: androidx.compose.foundation.IndicationNodeFactory,
     titleStyle: TextStyle,
     summaryStyle: TextStyle,
     accentSummaryStyle: TextStyle,
-    onLoadNextPage: suspend () -> Unit,
+    onLoadNextPage: (resetError: Boolean) -> Unit,
     onOpenWork: (SearchItem) -> Unit,
     headerContent: (@Composable () -> Unit)? = null,
 ) {
-    val scope = rememberCoroutineScope()
     val appContext = LocalContext.current
     val phase = when {
         allItemsCount == 0 && loading -> 0
@@ -743,27 +806,20 @@ private fun SearchWorkGridPage(
                 bottomPadding = bottomPadding,
             )
 
-            1 -> Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = error ?: "",
-                    kind = CouiTextKind.ItemSummary,
-                    color = colors.summary,
-                )
-                Spacer(Modifier.height(16.dp))
-                PrimaryButton(
-                    text = stringResource(R.string.action_retry),
-                    onClick = { scope.launch { onLoadNextPage() } },
-                )
-            }
+            1 -> RetryErrorState(
+                error = error,
+                onRetry = { onLoadNextPage(true) },
+                backdrop = surfaceBackdrop,
+                fallbackMessage = stringResource(R.string.error_search_failed),
+            )
 
             else -> {
                 val latestVisible by rememberUpdatedState(visible)
+                val latestCount by rememberUpdatedState(allItemsCount)
+                val latestEndReached by rememberUpdatedState(endReached)
+                val latestLoading by rememberUpdatedState(loading)
+                val latestError by rememberUpdatedState(error)
+                val latestOnLoadNextPage by rememberUpdatedState(onLoadNextPage)
                 LaunchedEffect(gridState) {
                     val enqueuedUrls = HashSet<String>(96)
                     val activePreloads = ArrayDeque<Pair<Int, Disposable>>(24)
@@ -804,20 +860,23 @@ private fun SearchWorkGridPage(
                             }
                         }
                 }
-                LaunchedEffect(gridState, allItemsCount, endReached, loading) {
-                    if (allItemsCount == 0 || endReached || loading) return@LaunchedEffect
+                LaunchedEffect(gridState) {
                     snapshotFlow {
-                        val info = gridState.layoutInfo
-                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                        info.totalItemsCount > 0 && lastVisible >= info.totalItemsCount - 6
+                        if (latestCount == 0 || latestEndReached || latestLoading || latestError != null) {
+                            false
+                        } else {
+                            val info = gridState.layoutInfo
+                            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                            info.totalItemsCount > 0 && lastVisible >= info.totalItemsCount - 6
+                        }
                     }
                         .distinctUntilChanged()
-                        .collect { nearEnd ->
-                            if (nearEnd) onLoadNextPage()
-                        }
+                        .filter { it }
+                        .collect { latestOnLoadNextPage(false) }
                 }
+                val columns = rememberAdaptiveGridColumns()
                 LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Fixed(2),
+                    columns = StaggeredGridCells.Fixed(columns),
                     modifier = Modifier
                         .fillMaxSize()
                         .overscroll(overscroll),
@@ -874,22 +933,31 @@ private fun SearchWorkGridPage(
                     }
 
                     item(span = StaggeredGridItemSpan.FullLine, key = "footer") {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = when {
-                                    error != null -> error
-                                    loading -> stringResource(R.string.search_loading)
-                                    endReached -> stringResource(R.string.search_end)
-                                    else -> ""
-                                },
-                                kind = CouiTextKind.ItemSummary,
-                                color = colors.summary,
+                        if (error != null) {
+                            RetryErrorState(
+                                error = error,
+                                onRetry = { onLoadNextPage(true) },
+                                backdrop = surfaceBackdrop,
+                                fillScreen = false,
+                                fallbackMessage = stringResource(R.string.error_search_failed),
                             )
+                        } else {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = when {
+                                        loading -> stringResource(R.string.search_loading)
+                                        endReached -> stringResource(R.string.search_end)
+                                        else -> ""
+                                    },
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = colors.summary,
+                                )
+                            }
                         }
                     }
                 }
@@ -909,9 +977,11 @@ private fun AuthorResultsList(
     overscroll: com.itos.coui.scroll.CouiOverscrollEffect,
     topPadding: Dp,
     bottomPadding: Dp,
+    surfaceBackdrop: CouiBackdrop,
     onOpenAuthor: (String) -> Unit,
     onLogin: () -> Unit,
     onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val colors = CouiPageDefaults.themeColors()
     when {
@@ -921,18 +991,25 @@ private fun AuthorResultsList(
                 .padding(top = topPadding + 16.dp),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Group {
-                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = stringResource(R.string.search_author_login_hint),
-                        kind = CouiTextKind.ItemSummary,
-                        color = colors.summary,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    PrimaryButton(
-                        text = stringResource(R.string.login_title),
-                        onClick = onLogin,
-                    )
+            Box(
+                Modifier
+                    .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                    .fillMaxWidth(),
+            ) {
+                Group {
+                    Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.search_author_login_hint),
+                            kind = CouiTextKind.ItemSummary,
+                            color = colors.summary,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        PrimaryButton(
+                            text = stringResource(R.string.login_title),
+                            onClick = onLogin,
+                            backdrop = surfaceBackdrop,
+                        )
+                    }
                 }
             }
         }
@@ -945,13 +1022,12 @@ private fun AuthorResultsList(
             )
         }
 
-        users.isEmpty() && error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = error,
-                kind = CouiTextKind.ItemSummary,
-                color = colors.summary,
-            )
-        }
+        users.isEmpty() && error != null -> RetryErrorState(
+            error = error,
+            onRetry = onRetry,
+            backdrop = surfaceBackdrop,
+            fallbackMessage = stringResource(R.string.error_search_failed),
+        )
 
         users.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -961,39 +1037,96 @@ private fun AuthorResultsList(
             )
         }
 
-        else -> LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .overscroll(overscroll),
-            contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
-        ) {
-            items(users, key = { it.userId }) { user ->
-                UserCard(
-                    user = user,
-                    onClick = { onOpenAuthor(user.userId) },
-                )
-            }
-            item(key = "user-footer") {
-                LaunchedEffect(users.size, ended) {
-                    if (!ended) onLoadMore()
+        else -> {
+            val latestUsersCount by rememberUpdatedState(users.size)
+            val latestLoading by rememberUpdatedState(loading)
+            val latestEnded by rememberUpdatedState(ended)
+            val latestError by rememberUpdatedState(error)
+            val latestOnLoadMore by rememberUpdatedState(onLoadMore)
+            LaunchedEffect(listState) {
+                snapshotFlow {
+                    if (latestUsersCount == 0 || latestLoading || latestEnded || latestError != null) {
+                        false
+                    } else {
+                        val info = listState.layoutInfo
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                        info.totalItemsCount > 0 && lastVisible >= info.totalItemsCount - 4
+                    }
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = when {
-                            error != null -> error
-                            loading -> stringResource(R.string.search_loading)
-                            ended -> stringResource(R.string.search_end)
-                            else -> ""
-                        },
-                        kind = CouiTextKind.ItemSummary,
-                        color = colors.summary,
-                    )
+                    .distinctUntilChanged()
+                    .filter { it }
+                    .collect { latestOnLoadMore() }
+            }
+            val multiColumn = rememberWindowWidthTier() != WindowWidthTier.Compact
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .overscroll(overscroll),
+                contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
+            ) {
+                if (multiColumn) {
+                    val rows = users.chunked(2)
+                    items(rows, key = { it.first().userId }) { rowUsers ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            UserCard(
+                                user = rowUsers[0],
+                                onClick = { onOpenAuthor(rowUsers[0].userId) },
+                                modifier = Modifier.weight(1f),
+                                outerPadding = PaddingValues(0.dp),
+                            )
+                            if (rowUsers.size > 1) {
+                                UserCard(
+                                    user = rowUsers[1],
+                                    onClick = { onOpenAuthor(rowUsers[1].userId) },
+                                    modifier = Modifier.weight(1f),
+                                    outerPadding = PaddingValues(0.dp),
+                                )
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                } else {
+                    items(users, key = { it.userId }) { user ->
+                        UserCard(
+                            user = user,
+                            onClick = { onOpenAuthor(user.userId) },
+                        )
+                    }
+                }
+                item(key = "user-footer") {
+                    if (error != null) {
+                        RetryErrorState(
+                            error = error,
+                            onRetry = onRetry,
+                            backdrop = surfaceBackdrop,
+                            fillScreen = false,
+                            fallbackMessage = stringResource(R.string.error_search_failed),
+                        )
+                    } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = when {
+                                    loading -> stringResource(R.string.search_loading)
+                                    ended -> stringResource(R.string.search_end)
+                                    else -> ""
+                                },
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.summary,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1021,14 +1154,19 @@ private fun TagHeaderCard(
         stringResource(R.string.tag_header_works_loading)
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(TagCardShape)
-            .background(colors.card)
-            .padding(TagCardPadding),
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
     ) {
+        Row(
+            modifier = Modifier
+                .widthIn(max = AdaptiveTokens.TagHeaderMaxWidth)
+                .fillMaxWidth()
+                .clip(TagCardShape)
+                .background(colors.card)
+                .padding(TagCardPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         if (coverUrl.isBlank()) {
             Box(
                 Modifier
@@ -1084,6 +1222,7 @@ private fun TagHeaderCard(
                 dark = dark,
                 modifier = Modifier.align(Alignment.End),
             )
+        }
         }
     }
 }

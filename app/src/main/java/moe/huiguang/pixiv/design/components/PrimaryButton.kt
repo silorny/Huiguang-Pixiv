@@ -16,6 +16,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.CouiBackdrop
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -24,7 +26,8 @@ import com.itos.coui.theme.CouiTheme
 
 /**
  * Primary capsule button (46dp high, accent fill, white text) with COUI state
- * feedback and light actuation haptic.
+ * feedback and light actuation haptic. When [backdrop] is provided, renders via
+ * [GlowSurface] for full COUI 凝光 visuals.
  */
 @Composable
 fun PrimaryButton(
@@ -32,11 +35,35 @@ fun PrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    backdrop: CouiBackdrop? = null,
 ) {
     val dark = CouiTheme.isDark
     val accent = CouiTheme.colorScheme.accent
-    val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
+    if (backdrop != null) {
+        GlowSurface(
+            backdrop = backdrop,
+            dark = dark,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(46.dp),
+            shape = CouiCapsuleShape,
+            cornerWeight = 1f,
+            preset = SpotlightPreset.ChipTab,
+            colored = if (enabled) accent else accent.copy(alpha = 0.4f),
+            interactive = enabled,
+            onClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+            foregroundComposition = true,
+            staticSurface = false,
+        ) {
+            Text(text = text, kind = CouiTextKind.ItemTitle, color = Color.White)
+        }
+        return
+    }
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .fillMaxWidth()

@@ -93,6 +93,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -130,6 +131,39 @@ class SwipeRevealController {
     fun close() {
         openKey = null
         openBoundsInRoot = null
+    }
+}
+
+/**
+ * Consumes unconsumed horizontal drags that start within a card so parent
+ * `HorizontalPager` containers never pan or switch categories on card swipes,
+ * while leaving vertical scrolling and card taps unaffected.
+ */
+fun Modifier.blockParentHorizontalDrag(): Modifier = pointerInput(Unit) {
+    val slop = viewConfiguration.touchSlop
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
+        var totalDx = 0f
+        var totalDy = 0f
+        var lockedHorizontal = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) break
+            val delta = change.position - change.previousPosition
+            if (!lockedHorizontal) {
+                totalDx += delta.x
+                totalDy += delta.y
+                if (abs(totalDx) > slop && abs(totalDx) >= abs(totalDy)) {
+                    lockedHorizontal = true
+                } else if (abs(totalDy) > slop && abs(totalDy) > abs(totalDx)) {
+                    break
+                }
+            }
+            if (lockedHorizontal && !change.isConsumed) {
+                change.consume()
+            }
+        }
     }
 }
 
@@ -257,6 +291,7 @@ fun SwipeActionRow(
             .onGloballyPositioned { coords ->
                 if (isOpen) controller.openBoundsInRoot = coords.boundsInRoot()
             }
+            .blockParentHorizontalDrag()
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         SwipeRevealSurface(

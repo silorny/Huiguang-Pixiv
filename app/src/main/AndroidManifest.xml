@@ -17,7 +17,7 @@
 
         <activity
             android:name=".MainActivity"
-            android:configChanges="locale|layoutDirection"
+            android:configChanges="locale|layoutDirection|orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -34,7 +34,7 @@
         -->
         <activity
             android:name=".nav.PageActivity"
-            android:configChanges="locale|layoutDirection"
+            android:configChanges="locale|layoutDirection|orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

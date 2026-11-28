@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -86,6 +87,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.net.AppUpdateService
 import moe.huiguang.pixiv.data.store.AppLanguage
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
 import moe.huiguang.pixiv.design.components.NextChevron
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import moe.huiguang.pixiv.ui.common.openExternalUrl
@@ -166,8 +168,14 @@ fun AboutScreen(
                     .fillMaxSize()
                     .couiVerticalScroll(scroll, overscrollEffect = overscroll)
                     .padding(top = statusTop + 56.dp, bottom = navBottom + 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                AboutAppCard()
+                Column(
+                    Modifier
+                        .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                        .fillMaxWidth(),
+                ) {
+                    AboutAppCard()
 
                 AboutAuthorCard(
                     onClick = { openExternalUrl(context, AUTHOR_GITHUB_URL) },
@@ -273,6 +281,7 @@ fun AboutScreen(
                             color = colors.title,
                         )
                     }
+                }
                 }
             }
         }
@@ -552,6 +561,14 @@ private val OpenSourceComponents = listOf(
         copyright = "JetBrains s.r.o. and Compose Multiplatform Contributors",
     ),
     OpenSourceComponent(
+        name = "JetBrains Multiplatform AndroidX (lifecycle & savedstate)",
+        licenseShort = "Apache-2.0",
+        licenseAsset = "apache-2.0",
+        homepageHost = "github.com",
+        homepageUrl = "https://github.com/JetBrains/compose-multiplatform-core",
+        copyright = "JetBrains s.r.o. and The Android Open Source Project",
+    ),
+    OpenSourceComponent(
         name = "AndroidX & Jetpack Compose",
         licenseShort = "Apache-2.0",
         licenseAsset = "apache-2.0",
@@ -671,8 +688,14 @@ fun AboutDocScreen(
                     .fillMaxSize()
                     .couiVerticalScroll(scroll, overscrollEffect = overscroll)
                     .padding(top = statusTop + 56.dp + 8.dp, bottom = navBottom + 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                when {
+                Column(
+                    Modifier
+                        .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                        .fillMaxWidth(),
+                ) {
+                    when {
                     doc == "agreement" -> SectionedDocContent(
                         introRes = R.string.about_agreement_intro,
                         sections = listOf(
@@ -717,6 +740,7 @@ fun AboutDocScreen(
                                 .padding(horizontal = 18.dp, vertical = 18.dp),
                         )
                     }
+                }
                 }
             }
         }

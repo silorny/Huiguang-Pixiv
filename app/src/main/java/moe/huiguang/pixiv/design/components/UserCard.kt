@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -45,6 +46,7 @@ fun UserCard(
     user: UserSearchItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    outerPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiPageDefaults.themeColors()
@@ -56,7 +58,7 @@ fun UserCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(outerPadding)
             .background(colors.card, UserCardShape)
             .clickable(
                 interactionSource = interaction,

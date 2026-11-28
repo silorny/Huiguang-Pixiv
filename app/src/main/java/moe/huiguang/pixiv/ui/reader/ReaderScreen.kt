@@ -165,9 +165,12 @@ import moe.huiguang.pixiv.data.store.PaperTheme
 import moe.huiguang.pixiv.data.store.ReaderStyle
 import moe.huiguang.pixiv.data.store.ReadingStore
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.CenteredReadableBox
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.SecondaryButton
 import moe.huiguang.pixiv.design.components.SettingSwitchRow
@@ -299,21 +302,25 @@ fun ReaderScreen(
 
     val work = novel
     if (work == null) {
+        val errorBackdrop = rememberCouiBackdrop()
         Box(
             Modifier
                 .fillMaxSize()
                 .background(palette.background),
             contentAlignment = Alignment.Center,
         ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .couiBackdrop(errorBackdrop)
+                    .background(palette.background),
+            )
             if (error != null) {
-                Column(
-                    Modifier.padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(text = error!!, kind = CouiTextKind.ItemSummary, color = palette.subtle)
-                    Spacer(Modifier.height(16.dp))
-                    PrimaryButton(text = stringResource(R.string.action_retry), onClick = { reloadKey++ })
-                }
+                RetryErrorState(
+                    error = error,
+                    onRetry = { reloadKey++ },
+                    backdrop = errorBackdrop,
+                )
             } else {
                 Text(
                     text = stringResource(R.string.search_loading),
@@ -590,16 +597,26 @@ fun ReaderScreen(
                     )
                 }
             } else if (paged) {
-                BoxWithConstraints(
+                Box(
                     Modifier
                         .fillMaxSize()
-                        .padding(
-                            start = 22.dp,
-                            end = 28.dp,
-                            top = statusTop + 68.dp,
-                            bottom = navBottom + 74.dp,
-                        ),
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { chrome = !chrome },
+                    contentAlignment = Alignment.TopCenter,
                 ) {
+                    BoxWithConstraints(
+                        Modifier
+                            .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                            .fillMaxSize()
+                            .padding(
+                                start = 22.dp,
+                                end = 28.dp,
+                                top = statusTop + 68.dp,
+                                bottom = navBottom + 74.dp,
+                            ),
+                    ) {
                     val widthPx = with(density) { maxWidth.roundToPx() }
                     val heightPx = with(density) { maxHeight.roundToPx() }
                     LaunchedEffect(widthPx, heightPx) {
@@ -701,6 +718,7 @@ fun ReaderScreen(
                             }
                         }
                     }
+                    }
                 }
             } else {
                 Box(
@@ -726,67 +744,73 @@ fun ReaderScreen(
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             item(key = "novel-heading") {
-                                Column(Modifier.padding(bottom = 12.dp)) {
-                                    BasicText(
-                                        text = work.title.ifBlank { stringResource(R.string.untitled_work) },
-                                        style = TextStyle(
-                                            color = palette.ink,
-                                            fontSize = (style.fontSize + 6).sp,
-                                            fontWeight = FontWeight.Bold,
-                                            lineHeight = (style.fontSize + 14).sp,
-                                        ),
-                                    )
-                                    Spacer(Modifier.height(6.dp))
-                                    BasicText(
-                                        text = work.userName,
-                                        style = TextStyle(
-                                            color = palette.subtle,
-                                            fontSize = 13.sp,
-                                        ),
-                                    )
+                                CenteredReadableBox {
+                                    Column(Modifier.padding(bottom = 12.dp)) {
+                                        BasicText(
+                                            text = work.title.ifBlank { stringResource(R.string.untitled_work) },
+                                            style = TextStyle(
+                                                color = palette.ink,
+                                                fontSize = (style.fontSize + 6).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = (style.fontSize + 14).sp,
+                                            ),
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        BasicText(
+                                            text = work.userName,
+                                            style = TextStyle(
+                                                color = palette.subtle,
+                                                fontSize = 13.sp,
+                                            ),
+                                        )
+                                    }
                                 }
                             }
 
                             items(blocks.size, key = { it }) { index ->
-                                when (val block = blocks[index]) {
-                                    is NovelBlock.Chapter -> ChapterHeading(
-                                        title = block.title,
-                                        fontSize = style.fontSize,
-                                        ink = palette.ink,
-                                        accent = accent,
-                                    )
+                                CenteredReadableBox {
+                                    when (val block = blocks[index]) {
+                                        is NovelBlock.Chapter -> ChapterHeading(
+                                            title = block.title,
+                                            fontSize = style.fontSize,
+                                            ink = palette.ink,
+                                            accent = accent,
+                                        )
 
-                                    is NovelBlock.Paragraph -> ParagraphText(
-                                        text = block.text,
-                                        first = block.first,
-                                        indent = style.indent,
-                                        textStyle = bodyStyle,
-                                    )
+                                        is NovelBlock.Paragraph -> ParagraphText(
+                                            text = block.text,
+                                            first = block.first,
+                                            indent = style.indent,
+                                            textStyle = bodyStyle,
+                                        )
 
-                                    is NovelBlock.Image -> EmbeddedImage(
-                                        image = block.image,
-                                        active = index == highlightedBlock,
-                                        accent = accent,
-                                        subtle = palette.subtle,
-                                        onClick = { openImagePreview(index) },
-                                    )
+                                        is NovelBlock.Image -> EmbeddedImage(
+                                            image = block.image,
+                                            active = index == highlightedBlock,
+                                            accent = accent,
+                                            subtle = palette.subtle,
+                                            onClick = { openImagePreview(index) },
+                                        )
 
-                                    is NovelBlock.PageBreak -> PageBreakLine(palette.subtle)
+                                        is NovelBlock.PageBreak -> PageBreakLine(palette.subtle)
+                                    }
                                 }
                             }
 
                             if (series != null) {
                                 item(key = "series-footer") {
-                                    SeriesFooterCard(
-                                        seriesTitle = series.title,
-                                        order = series.order,
-                                        prevId = prevEp?.id,
-                                        prevTitle = prevEp?.title,
-                                        nextId = nextEp?.id,
-                                        nextTitle = nextEp?.title,
-                                        onOpenEpisode = onOpenEpisode,
-                                        onOpenSeries = { onOpenSeries(series.seriesId, work.id) },
-                                    )
+                                    CenteredReadableBox {
+                                        SeriesFooterCard(
+                                            seriesTitle = series.title,
+                                            order = series.order,
+                                            prevId = prevEp?.id,
+                                            prevTitle = prevEp?.title,
+                                            nextId = nextEp?.id,
+                                            nextTitle = nextEp?.title,
+                                            onOpenEpisode = onOpenEpisode,
+                                            onOpenSeries = { onOpenSeries(series.seriesId, work.id) },
+                                        )
+                                    }
                                 }
                             }
                         }

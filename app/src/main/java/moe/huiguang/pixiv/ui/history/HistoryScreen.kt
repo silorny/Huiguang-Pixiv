@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -49,8 +50,9 @@ import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
 import com.itos.coui.menu.rememberCouiWindowBackdrop
+import com.itos.coui.navigation.CouiNavigationItem
+import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
@@ -59,7 +61,10 @@ import kotlinx.coroutines.launch
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.CenteredReadableBox
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.design.components.CircleIconButton
+import moe.huiguang.pixiv.design.components.FloatingSegmentedControl
 import moe.huiguang.pixiv.design.components.SwipeDeleteRow
 import moe.huiguang.pixiv.design.components.SwipeRevealController
 import moe.huiguang.pixiv.design.components.WorkRowBody
@@ -102,6 +107,13 @@ fun HistoryScreen(
     }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val isLandscapeSplit = rememberIsLandscapeSplit()
+    val filterLabels = listOf(
+        stringResource(R.string.filter_all),
+        stringResource(R.string.filter_illust),
+        stringResource(R.string.filter_manga),
+        stringResource(R.string.filter_novel),
+    )
 
     LaunchedEffect(filter) { swipeController.close() }
     val activeListState = listStates[filter]
@@ -127,68 +139,50 @@ fun HistoryScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                Spacer(Modifier.height(statusTop + 56.dp + 8.dp))
-                SegmentedControl(
+            HorizontalPager(
+                state = pagerState,
+                beyondViewportPageCount = 3,
+                userScrollEnabled = isLandscapeSplit,
+                modifier = Modifier.fillMaxSize(),
+            ) { pageFilter ->
+                val overscroll = rememberCouiOverscrollEffect()
+                val pageListState = listStates[pageFilter]
+                val entries = remember(state.history, pageFilter) {
+                    state.history.filter { matchesHistoryFilter(it, pageFilter) }
+                }
+                LazyColumn(
+                    state = pageListState,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    backdrop = effectBackdrop,
-                    labels = listOf(
-                        stringResource(R.string.filter_all),
-                        stringResource(R.string.filter_illust),
-                        stringResource(R.string.filter_manga),
-                        stringResource(R.string.filter_novel),
+                        .fillMaxSize()
+                        .overscroll(overscroll),
+                    contentPadding = PaddingValues(
+                        top = statusTop + 56.dp + 8.dp,
+                        bottom = navBottom + if (isLandscapeSplit) 24.dp else 88.dp,
                     ),
-                    selectedIndex = filter,
-                    onSelected = { target ->
-                        scope.launch { pagerState.animateScrollToPage(target) }
-                    },
-                )
-                HorizontalPager(
-                    state = pagerState,
-                    beyondViewportPageCount = 3,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) { pageFilter ->
-                    val overscroll = rememberCouiOverscrollEffect()
-                    val pageListState = listStates[pageFilter]
-                    val entries = remember(state.history, pageFilter) {
-                        state.history.filter { matchesHistoryFilter(it, pageFilter) }
-                    }
-                    LazyColumn(
-                        state = pageListState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .overscroll(overscroll),
-                        contentPadding = PaddingValues(
-                            top = 4.dp,
-                            bottom = navBottom + 24.dp,
-                        ),
-                    ) {
-                        if (entries.isEmpty()) {
-                            item(key = "empty-$pageFilter") {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 72.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.history_empty),
-                                        kind = CouiTextKind.ItemSummary,
-                                        color = colors.summary,
-                                    )
-                                }
+                ) {
+                    if (entries.isEmpty()) {
+                        item(key = "empty-$pageFilter") {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 72.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.history_empty),
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = colors.summary,
+                                )
                             }
-                        } else {
-                            items(
-                                items = entries,
-                                key = { "${it.kind}-${it.pid}" },
-                                contentType = { "historyRow" },
-                            ) { entry ->
-                                val rowKey = "${entry.kind}-${entry.pid}"
+                        }
+                    } else {
+                        items(
+                            items = entries,
+                            key = { "${it.kind}-${it.pid}" },
+                            contentType = { "historyRow" },
+                        ) { entry ->
+                            val rowKey = "${entry.kind}-${entry.pid}"
+                            CenteredReadableBox {
                                 SwipeDeleteRow(
                                     rowKey = rowKey,
                                     controller = swipeController,
@@ -205,18 +199,82 @@ fun HistoryScreen(
                                     )
                                 }
                             }
-                            item(key = "bottom-spacer-$pageFilter") { Spacer(Modifier.height(8.dp)) }
                         }
+                        item(key = "bottom-spacer-$pageFilter") { Spacer(Modifier.height(8.dp)) }
                     }
                 }
             }
         }
 
+        if (!isLandscapeSplit) {
+            val navItems = listOf(
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_all),
+                    icon = CouiIcons.Outlined.LayoutSpliced,
+                    selectedIcon = CouiIcons.Filled.Grid,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_illust),
+                    icon = CouiIcons.Outlined.Photo,
+                    selectedIcon = CouiIcons.Filled.Photo,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_manga),
+                    icon = CouiIcons.Outlined.Album,
+                    selectedIcon = CouiIcons.Filled.Album,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.filter_novel),
+                    icon = CouiIcons.Filled.BookOpen,
+                    selectedIcon = CouiIcons.Filled.BookOpen,
+                ),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            ) {
+                NavigationBar(
+                    backdrop = backdrop,
+                    items = navItems,
+                    selectedIndex = filter,
+                    onSelection = { target ->
+                        scope.launch { pagerState.animateScrollToPage(target) }
+                    },
+                )
+            }
+        }
+
+        val landscapeSwitcher: (@Composable () -> Unit)? = if (isLandscapeSplit) {
+            {
+                FloatingSegmentedControl(
+                    labels = filterLabels,
+                    selectedIndex = filter,
+                    onSelected = { target ->
+                        scope.launch { pagerState.animateScrollToPage(target) }
+                    },
+                    backdrop = backdrop,
+                    dark = dark,
+                )
+            }
+        } else {
+            null
+        }
         FloatingSecondaryTopBar(
             title = stringResource(R.string.history_title),
             backdrop = backdrop,
             onBack = onBack,
+            afterTitle = if (state.leftHanded && landscapeSwitcher != null) {
+                { landscapeSwitcher() }
+            } else {
+                null
+            },
             trailing = {
+                if (!state.leftHanded && landscapeSwitcher != null) {
+                    landscapeSwitcher()
+                    Spacer(Modifier.width(8.dp))
+                }
                 Box {
                     CircleIconButton(
                         icon = CouiIcons.Filled.More,

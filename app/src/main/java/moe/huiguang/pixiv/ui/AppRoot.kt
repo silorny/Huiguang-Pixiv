@@ -6,12 +6,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -54,6 +59,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.SearchMode
 import moe.huiguang.pixiv.data.search.SearchIntent
 import moe.huiguang.pixiv.data.search.SearchIntentParser
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.nav.PageActivity
 import moe.huiguang.pixiv.nav.Route
 import moe.huiguang.pixiv.ui.common.WelcomeConsentDialog
@@ -214,6 +220,7 @@ fun AppRoot(container: AppContainer) {
                 backdrop = pageBackdrop,
                 effectBackdrop = flatEffectBackdrop,
                 statusTop = statusTop,
+                leftHanded = settingsState.leftHanded,
             )
 
             1 -> SearchTopChrome(
@@ -231,65 +238,93 @@ fun AppRoot(container: AppContainer) {
             )
         }
 
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-                .pointerInput(items.size) {
-                    val slop = viewConfiguration.touchSlop
-                    val maxDoubleTapMs = 400L
-                    val menuMaxPx = 250.dp.toPx()
-                    val sideReservePx = 168.dp.toPx()
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        val downPos = down.position
-                        var dragged = false
-                        var upPos = downPos
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if ((change.position - downPos).getDistance() > slop) {
-                                dragged = true
+        val isLandscapeSplit = rememberIsLandscapeSplit()
+        val navBarNode: @Composable BoxScope.() -> Unit = {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .pointerInput(items.size) {
+                        val slop = viewConfiguration.touchSlop
+                        val maxDoubleTapMs = 400L
+                        val menuMaxPx = 250.dp.toPx()
+                        val sideReservePx = 168.dp.toPx()
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            val downPos = down.position
+                            var dragged = false
+                            var upPos = downPos
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if ((change.position - downPos).getDistance() > slop) {
+                                    dragged = true
+                                }
+                                upPos = change.position
+                                if (!change.pressed) break
                             }
-                            upPos = change.position
-                            if (!change.pressed) break
-                        }
-                        if (!dragged) {
-                            val menuWidthPx = minOf(
-                                (size.width - sideReservePx).coerceAtLeast(1f),
-                                menuMaxPx,
-                            )
-                            val relX = (upPos.x - (size.width - menuWidthPx) * 0.5f) / menuWidthPx
-                            if (relX in 0f..1f) {
-                                val tappedTab = (relX * items.size).toInt().coerceIn(0, items.lastIndex)
-                                val current = latestPage
-                                if (tappedTab == current) {
-                                    val now = SystemClock.uptimeMillis()
-                                    if (lastTapTab == current && now - lastTapAt <= maxDoubleTapMs) {
+                            if (!dragged) {
+                                val menuWidthPx = minOf(
+                                    (size.width - sideReservePx).coerceAtLeast(1f),
+                                    menuMaxPx,
+                                )
+                                val relX = (upPos.x - (size.width - menuWidthPx) * 0.5f) / menuWidthPx
+                                if (relX in 0f..1f) {
+                                    val tappedTab = (relX * items.size).toInt().coerceIn(0, items.lastIndex)
+                                    val current = latestPage
+                                    if (tappedTab == current) {
+                                        val now = SystemClock.uptimeMillis()
+                                        if (lastTapTab == current && now - lastTapAt <= maxDoubleTapMs) {
+                                            lastTapAt = 0L
+                                            lastTapTab = -1
+                                            scrollToTopTicks[current] = scrollToTopTicks[current] + 1
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        } else {
+                                            lastTapAt = now
+                                            lastTapTab = current
+                                        }
+                                    } else {
                                         lastTapAt = 0L
                                         lastTapTab = -1
-                                        scrollToTopTicks[current] = scrollToTopTicks[current] + 1
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    } else {
-                                        lastTapAt = now
-                                        lastTapTab = current
                                     }
-                                } else {
-                                    lastTapAt = 0L
-                                    lastTapTab = -1
                                 }
                             }
                         }
-                    }
-                },
-        ) {
-            NavigationBar(
-                backdrop = pageBackdrop,
-                items = items,
-                selectedIndex = page,
-                onSelection = { page = it },
-            )
+                    },
+            ) {
+                NavigationBar(
+                    backdrop = pageBackdrop,
+                    items = items,
+                    selectedIndex = page,
+                    onSelection = { page = it },
+                )
+            }
+        }
+
+        if (isLandscapeSplit) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                if (!settingsState.leftHanded) {
+                    Spacer(Modifier.weight(1f))
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    navBarNode()
+                }
+                if (settingsState.leftHanded) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        } else {
+            navBarNode()
         }
     }
 }

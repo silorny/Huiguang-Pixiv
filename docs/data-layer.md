@@ -1,53 +1,72 @@
-# 数据层架构说明
+# 数据层（P2）
 
-`data` 为独立逻辑模块（`moe.huiguang.pixiv.data.*`），仅依赖 Kotlin、协程、OkHttp、Android `SharedPreferences` 与 `MediaStore`，不引用任何 Compose 或 UI 类型。
+`data` 是纯逻辑模块：只依赖 Kotlin、协程、OkHttp 与 Android 的 `SharedPreferences` / `MediaStore`，不引用任何 Compose 或 UI 类型。
 
-## 核心入口
+## 公开入口
 
 | 类型 | 位置 | 说明 |
 | --- | --- | --- |
-| `PixivApi` | `net/PixivApi.kt` | Pixiv Web Ajax 客户端，支持注入 `baseUrl` 与 `cookieProvider` 以便测试与隔离 |
-| `PixivException` | `net/PixivApi.kt` | 传输或服务端异常（资源不存在时返回 `null`） |
-| `PixivisionParser` | `net/PixivisionParser.kt` | Pixivision 特辑列表与详情页 HTML 解析器 |
-| `AppUpdateService` | `net/AppUpdateService.kt` | GitHub Releases 匿名版本检查与 APK 下载服务（仅限官方 GitHub 域名，零 Cookie/Referer） |
-| `Session` / `SessionHolder` | `net/Session.kt` | 会话凭证与登录态持有器 |
-| `EngagementRepository` | `repo/EngagementRepository.kt` | 收藏与关注状态双向同步仓库及事件流 |
-| `SettingsStore` | `store/SettingsStore.kt` | 加密会话存储、R-18、语言、外观、自定义下载目录与分享格式偏好、历史记录管理 |
-| `ReadingStore` | `store/ReadingStore.kt` | 小说阅读进度与书签持久化（最多保留 60 部） |
-| `FavoriteStore` | `store/FavoriteStore.kt` | 本地与云端收藏 / 关注状态辅助存储 |
-| `HomeFeedCache` | `store/HomeFeedCache.kt` | 首页离线首屏缓存（按账号隔离） |
-| `KeyValueStore` | `store/KeyValueStore.kt` | 键值存储抽象（生产实现支持注入加密委托，测试使用内存实现） |
-| `ImageDownloader` | `media/ImageDownloader.kt` | 原图与小说 TXT 导出（默认写入系统 `Download` 目录，或经 SAF 写入用户自选目录） |
-| `ShareFormat` | `model/ShareFormat.kt` | 作品与作者自定义分享文本模板及变量渲染器 |
-| `SearchIntentParser` | `search/SearchIntent.kt` | PID、Pixiv 链接、作者链接与关键词解析分流器 |
-| `HomeFeed` | `model/Feed.kt` | 首页推荐、榜单与关注流数据模型 |
-| `NovelBlocks` | `model/NovelContent.kt` | 小说正文语法切块与内嵌插图提取 |
+| `PixivApi` | `net/PixivApi.kt` | Web Ajax 客户端。构造参数 `baseUrl` 与 `cookieProvider` 都可注入，替换掉旧项目的全局 `object` |
+| `PixivException` | `net/PixivApi.kt` | 传输 / 服务端失败（与「不存在」区分：不存在返回 `null`） |
+| `Session` / `SessionHolder` | `net/Session.kt` | 登录态；`SessionHolder` 是拦截器的默认 cookie 来源 |
+| `SettingsStore` | `store/SettingsStore.kt` | 登录态、R-18、语言、历史；暴露 `StateFlow<SettingsState>` |
+| `ReadingStore` | `store/ReadingStore.kt` | 小说阅读进度与书签，最多保留 60 部 |
+| `KeyValueStore` | `store/KeyValueStore.kt` | 存储抽象；`SharedPreferencesStore` 生产用，`InMemoryKeyValueStore` 测试用 |
+| `ImageDownloader` | `media/ImageDownloader.kt` | 原图 / TXT 写入系统 Download 目录（走 MediaStore，无需权限） |
+| `SearchIntentParser` | `search/SearchIntent.kt` | PID、pixiv 链接、关键词三路分流 |
+| `HomeFeed` / `homeFeed()` | `model/Feed.kt`、`net/PixivApi.kt` | 登录态首页推荐；`fallbackFeed()` 是未登录的精选标签兜底 |
+| `NovelBlocks` | `model/NovelContent.kt` | 小说正文切块：段落 / `[uploadedimage:ID]` / 1000 字分片，纯函数可测 |
 
-## 首页推荐接口聚合机制
+## 首页推荐的真实形状（P4 真机抓包）
 
-已登录状态下 `GET /ajax/top/illust` 返回体中同时包含作品索引与分区 ID 引用：
+`GET /ajax/top/illust?mode=all&lang=zh` 未登录返回 **400**，登录后返回约 1.5 MB：
 
 | 字段 | 内容 |
 | --- | --- |
-| `body.thumbnails.illust` / `novel` | 作品与小说实体字典 |
-| `page.recommend` | 推荐作品 ID 列表与推荐元数据 |
-| `page.ranking.items` | 榜单排序与 ID 列表 |
-| `page.follow` / `page.newPost` | 关注作者最新作品 ID 列表 |
-| `page.tags` / `page.trendingTags` | 精选标签与趋势标签列表 |
+| `body.thumbnails.illust` | 604 条作品对象（id / title / illustType / url / tags / userId / userName / 宽高 / pageCount / xRestrict） |
+| `body.thumbnails.novel` | 40 条小说对象 |
+| `page.recommend` | `{ ids: [18], details: { id: {methods, score, seedIllustIds} } }`——**details 里只有推荐理由，没有作品字段** |
+| `page.ranking.items` | 100 条 `{rank, id}`，作品实体同样在 thumbnails 里 |
+| `page.follow` / `page.newPost` | id 数组 |
+| `page.tags` / `page.trendingTags` | 53 / 23 个 `{tag, ids}`，用作分类胶囊 |
 
-解析时优先构建 `thumbnails` 的 `id → SearchItem` 映射缓存，再按各分区 ID 顺序装配模型，以单次请求完成首页首屏聚合。
+所以解析顺序是：先把 `thumbnails.illust` 建成 `id → SearchItem` 缓存，再按各 section 的 id 列表解析。整个首页仍然是**一次请求**。
 
-## 网络传输约定
+## 与旧项目（PixivQuickLook）的差异
 
-- **图床防盗链**：对 `pixiv.net` 与 `pximg.net` 图片及 API 请求统一附加 `Referer: https://www.pixiv.net/`。
-- **Cookie 域名边界**：仅向 Pixiv / Pixivision 官方 HTTPS 目标主域附加会话 Cookie，重定向至第三方域名时剥离凭证。
-- **容错重试**：对服务端 5xx 响应及偶发 `IOException` 执行一次自动重试（间隔 700ms）。
-- **超时策略**：连接 20s、读取 60s、单次完整请求 120s（适配大型小说正文响应）。
+1. **`PixivApi` 从 `object` 改成可构造的类**：`baseUrl` 与 `cookieProvider` 可注入，测试能指向本地 HTTP 服务；生产侧由 `AppContainer` 持有一个实例。
+2. **存储抽象成 `KeyValueStore`**：`AppStore` 拆为 `SettingsStore`，不再持有 `Context` 单例；`ReadingStore` 同样去单例、去 `Context`。
+3. **`ImageDownloader` 去掉 API 29 以下分支**：`minSdk 34`，统一走 `MediaStore.Downloads`，不需要 `WRITE_EXTERNAL_STORAGE`。
+4. **`currentUserId` 兼容三种返回形状**（`userData` / `body.userData` / `body`）：旧代码只认第一种，登录校验一直没在真机跑通过。
+5. **新增 `SearchIntentParser`**：旧原生项目只认纯数字，链接解析是这次新写的（规则见类注释）。
+6. 包名统一为 `moe.huiguang.pixiv.data.*`，文件按 `net / model / store / media / search` 分层。
 
-## 离线单元测试
+## 传输约定（沿用并已验证）
+
+- 所有请求带 `Referer: https://www.pixiv.net/`——`i.pximg.net` 只认这个来源，否则 403。
+- 登录后附加 `Cookie`；显式传入的 cookie 优先于 `SessionHolder`。
+- 5xx 自动重试一次（间隔 700ms）：pixiv 偶发 503，重试即成功。
+- 超时：连接 20s、读取 60s、整通 120s（约 1MB 的小说 JSON 曾经踩过 20s 线）。
+
+## 测试
 
 ```powershell
 .\gradlew.bat :data:testDebugUnitTest
 ```
 
-测试套件使用 JDK 内置 `com.sun.net.httpserver` 在本地环回地址验证真实 OkHttp 请求链、JSON/HTML 解析、CSRF/Cookie 边界、重试机制与存储读写，无需外网即可离线执行。
+36 项，全部离线：
+| 测试类 | 覆盖 |
+| --- | --- |
+| `PixivApiHttpTest`(9) | 404→`null`、插画字段与系列、503 重试一次、Referer、Cookie 透传、小说内嵌图、搜索合并两类结果、未登录收藏降级为空、登录用户 id |
+| `HomeFeedTest`(2) | 未登录 400→`null`；推荐 / 排行 / 关注 id 经 thumbnails 缓存解析，分类与去裁剪正确 |
+| `SearchIntentTest`(12) | 纯数字、artworks / illusts / i / illust_id、novel 两种链接、users / u / member、纯文本、空白、无关链接 |
+| `StoreTest`(10) | 设置持久化、登出、历史去重与 60 上限、同号插画/小说、繁中回退、阅读进度与书签、60 条裁剪 |
+| `UrlTest`(3) | 去裁剪、已是原图、文件名清洗 |
+
+HTTP 测试用 JDK 自带 `com.sun.net.httpserver`，不依赖 MockWebServer，也不需要联网。
+
+## 已知限制
+
+- `search()` 一次只取一页（`page` 参数已预留），聚合总数没有从接口读，UI 分页在 P4 处理。
+- 系列列表仍靠 `prev`/`next` 走链（pixiv 没有列表接口），`cap` 默认 20。
+- 解析用的 JSON 夹具按真实响应裁剪而来；完整真实数据将在 P4 接页面时于真机回归。

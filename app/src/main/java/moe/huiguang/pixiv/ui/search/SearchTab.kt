@@ -84,6 +84,8 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.model.SearchMode
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.CenteredReadableBox
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.SwipeDeleteRow
@@ -189,6 +191,7 @@ fun SearchTopChrome(
     // Right More button sits at end = 20.dp (40.dp wide -> left edge at end = 60.dp).
     // SearchBar has built-in 16.dp horizontal margin, so +52.dp leaves an 8.dp gap beside More.
     val collapsedEndReservePx = with(density) { 52.dp.roundToPx() }
+    val searchMaxWidthPx = with(density) { AdaptiveTokens.SearchBarMaxWidth.roundToPx() }
 
     val baseTitleStyle = remember(colors.title) {
         TextStyle(
@@ -357,7 +360,9 @@ fun SearchTopChrome(
                 constraints.copy(minHeight = 0),
             )
             val endReserve = (collapsedEndReservePx * shrinkProgress).roundToInt()
-            val searchW = (constraints.maxWidth - endReserve).coerceAtLeast(0)
+            val availableW = (constraints.maxWidth - endReserve).coerceAtLeast(0)
+            val searchW = availableW.coerceAtMost(searchMaxWidthPx)
+            val searchX = (availableW - searchW) / 2
             val searchPlaceable = measurables[1].measure(
                 Constraints.fixedWidth(searchW),
             )
@@ -368,7 +373,7 @@ fun SearchTopChrome(
                 .coerceAtLeast(headerPlaceable.height)
             layout(constraints.maxWidth, totalH) {
                 headerPlaceable.placeRelative(0, 0)
-                searchPlaceable.placeRelative(0, searchY)
+                searchPlaceable.placeRelative(searchX, searchY)
             }
         }
     }
@@ -439,71 +444,86 @@ fun SearchTab(
             ),
         ) {
             item(key = "modes") {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    GlowChip(
-                        text = stringResource(R.string.search_mode_keyword),
-                        onClick = { tabState.modeKey = "keyword" },
-                        selected = tabState.modeKey == "keyword",
-                        backdrop = effectBackdrop,
-                        dark = effectDark,
-                    )
-                    GlowChip(
-                        text = stringResource(R.string.search_mode_tag),
-                        onClick = { tabState.modeKey = "tag" },
-                        selected = tabState.modeKey == "tag",
-                        backdrop = effectBackdrop,
-                        dark = effectDark,
-                    )
+                CenteredReadableBox {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        GlowChip(
+                            text = stringResource(R.string.search_mode_keyword),
+                            onClick = { tabState.modeKey = "keyword" },
+                            selected = tabState.modeKey == "keyword",
+                            backdrop = effectBackdrop,
+                            dark = effectDark,
+                        )
+                        GlowChip(
+                            text = stringResource(R.string.search_mode_tag),
+                            onClick = { tabState.modeKey = "tag" },
+                            selected = tabState.modeKey == "tag",
+                            backdrop = effectBackdrop,
+                            dark = effectDark,
+                        )
+                    }
                 }
             }
 
             if (state.history.isNotEmpty()) {
                 item(key = "history-label") {
-                    Text(
-                        text = stringResource(R.string.search_history_label),
-                        kind = CouiTextKind.ItemSummary,
-                        color = colors.summary,
-                        modifier = Modifier
-                            .padding(horizontal = 20.dp)
-                            .padding(top = 4.dp),
-                    )
+                    CenteredReadableBox {
+                        Text(
+                            text = stringResource(R.string.search_history_label),
+                            kind = CouiTextKind.ItemSummary,
+                            color = colors.summary,
+                            modifier = Modifier
+                                .padding(horizontal = 20.dp)
+                                .padding(top = 4.dp),
+                        )
+                    }
                 }
                 item(key = "filter") {
-                    SegmentedControl(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        labels = listOf(
-                            stringResource(R.string.filter_all),
-                            stringResource(R.string.filter_illust),
-                            stringResource(R.string.filter_manga),
-                            stringResource(R.string.filter_novel),
-                        ),
-                        selectedIndex = filter,
-                        onSelected = { tabState.filter = it },
-                    )
+                    CenteredReadableBox {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            SegmentedControl(
+                                modifier = Modifier
+                                    .widthIn(max = AdaptiveTokens.SwitcherMaxWidth)
+                                    .fillMaxWidth(),
+                                labels = listOf(
+                                    stringResource(R.string.filter_all),
+                                    stringResource(R.string.filter_illust),
+                                    stringResource(R.string.filter_manga),
+                                    stringResource(R.string.filter_novel),
+                                ),
+                                selectedIndex = filter,
+                                onSelected = { tabState.filter = it },
+                            )
+                        }
+                    }
                 }
             }
 
             if (history.isEmpty()) {
                 item(key = "empty") {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                    ) {
-                        Text(
-                            text = stringResource(
-                                if (state.history.isEmpty()) R.string.search_tip else R.string.history_empty,
-                            ),
-                            kind = CouiTextKind.ItemSummary,
-                            color = colors.summary,
-                        )
+                    CenteredReadableBox {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (state.history.isEmpty()) R.string.search_tip else R.string.history_empty,
+                                ),
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.summary,
+                            )
+                        }
                     }
                 }
             } else {
@@ -513,20 +533,22 @@ fun SearchTab(
                     contentType = { "historyRow" },
                 ) { entry ->
                     val rowKey = "${entry.kind}-${entry.pid}"
-                    SwipeDeleteRow(
-                        rowKey = rowKey,
-                        controller = swipeController,
-                        backdrop = effectBackdrop,
-                        onClick = { onOpenHistory(entry) },
-                        onDelete = { settings.removeHistory(entry.pid, entry.kind) },
-                    ) {
-                        WorkRowBody(
-                            thumbUrl = entry.thumbUrl,
-                            title = entry.title,
-                            author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
-                            meta = workMeta(entry.kind, entry.illustType, entry.pid),
-                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                        )
+                    CenteredReadableBox {
+                        SwipeDeleteRow(
+                            rowKey = rowKey,
+                            controller = swipeController,
+                            backdrop = effectBackdrop,
+                            onClick = { onOpenHistory(entry) },
+                            onDelete = { settings.removeHistory(entry.pid, entry.kind) },
+                        ) {
+                            WorkRowBody(
+                                thumbUrl = entry.thumbUrl,
+                                title = entry.title,
+                                author = if (entry.kind == HistoryEntry.KIND_AUTHOR) "" else entry.userName,
+                                meta = workMeta(entry.kind, entry.illustType, entry.pid),
+                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            )
+                        }
                     }
                 }
             }

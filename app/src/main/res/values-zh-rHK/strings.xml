@@ -154,7 +154,7 @@
     <string name="settings_contour_glow">凝光輪廓光</string>
     <string name="settings_contour_glow_summary">為懸浮元件啟用邊緣描邊與光暈投影</string>
     <string name="settings_left_handed">慣用左手</string>
-    <string name="settings_left_handed_summary">將詳情頁底部獨立主按鈕顯示在左側</string>
+    <string name="settings_left_handed_summary">將主要操作按鈕與懸浮導航向左側靠攏</string>
     <string name="settings_storage">儲存</string>
     <string name="settings_clear_cache">清除快取</string>
     <string name="settings_clear_summary">封面、詳情與搜尋結果的暫存</string>
@@ -259,11 +259,11 @@
     <string name="about_agreement_sec_network_title">網絡連接與資料使用</string>
     <string name="about_agreement_sec_network_body">本應用程式需使用網絡權限以存取 Pixiv（pixiv.net、pximg.net、embed.pixiv.net）與 Pixivision（pixivision.net）官方服務，載入作品詳情、圖片資源、小說正文、標籤封面及搜尋結果；登入頁面僅於官方登入 WebView 內按需載入 Pixiv 整合的第三方帳號驗證與人機驗證服務（Google、reCAPTCHA、Cloudflare、Apple、X）。\n\n當您主動點擊「關注作者」或「收藏作品」時，客戶端將直接向 Pixiv 官方服務發起請求並同步狀態，不會將您的互動記錄轉發至任何第三方伺服器；「收藏標籤」僅儲存在本機，不會上傳或同步至任何伺服器。\n\n當您造訪「關於」頁面或主動點擊「檢查更新」時，應用程式會透過不攜帶 Pixiv Referer、Cookie、語言偏好或任何用戶及裝置資訊的獨立純淨 HTTP 客戶端，向 GitHub（api.github.com、github.com 與 *.githubusercontent.com）發起匿名唯讀請求，用於取得開發者公開資料、版本發佈資訊或下載您確認安裝的應用程式安裝包；「關於」頁面中的專案倉庫、Telegram 交流群組及第三方開源專案主頁僅在您主動點擊後透過系統瀏覽器或對應應用程式開啟或複製連結。</string>
     <string name="about_agreement_sec_storage_title">本機儲存與登入憑證</string>
-    <string name="about_agreement_sec_storage_body">登入過程完全透過 Pixiv 官方網頁完成，本應用程式絕不取得、讀取或儲存您的帳號密碼，僅在本機使用系統密鑰庫加密儲存用於工作階段驗證的 Cookie；登出時會同步清除本機及登入網頁中的工作階段 Cookie、本機收藏與關注快取、帳號相關快取以及圖片與更新快取。\n\n當您儲存原圖或匯出小說 TXT 檔案時，檔案預設寫入系統公開的 Download 目錄；若您在「設定 → 儲存 → 下載路徑」中透過系統檔案選擇器授權了自訂資料夾，則寫入您所選擇的目錄（可隨時恢復預設路徑）。\n\n瀏覽歷史、收藏標籤、自訂分享格式、閱讀排版、書籤進度、已跳過的更新版本號、首頁離線快取、圖片磁碟快取及點擊檢查更新後臨時下載的 APK 安裝包快取均儲存在本機應用程式私有儲存空間中，且已禁止系統備份與裝置間遷移。</string>
+    <string name="about_agreement_sec_storage_body">登入過程完全透過 Pixiv 官方網頁完成，本應用程式絕不取得、讀取或儲存您的帳號密碼，僅在本機使用系統密鑰庫加密儲存用於工作階段驗證的 Cookie（驗證通過後立即清理登入 WebView 內的暫存工作階段與快取）；登出時會同步清除本機及登入網頁中的工作階段 Cookie、本機收藏與關注快取、帳號相關快取以及圖片與更新快取。\n\n當您儲存原圖或匯出小說 TXT 檔案時，檔案預設寫入系統公開的 Download 目錄；若您在「設定 → 儲存 → 下載路徑」中透過系統檔案選擇器授權了自訂資料夾，則寫入您所選擇的目錄並可隨時恢復預設路徑（切換目錄時同步釋放原目錄持久化授權）。\n\n瀏覽歷史、收藏標籤、自訂分享格式、閱讀排版與書籤進度在登出後仍僅保留於本機應用程式私有儲存空間中（瀏覽歷史可於歷史頁面手動清空）；以上本機資料與已跳過的更新版本號、首頁離線快取、圖片磁碟快取及點擊檢查更新後臨時下載的 APK 安裝包快取均已禁止系統備份與裝置間遷移。</string>
     <string name="about_agreement_sec_privacy_title">私隱承諾與合規使用</string>
     <string name="about_agreement_sec_privacy_body">我們不設自有後端伺服器，不採集、分析或上傳任何用戶行為資料、裝置識別碼或個人身份資訊。\n\n請合理控制請求頻率並遵守 Pixiv 社群服務條款，使用第三方客戶端所產生的帳號風控與合規風險由用戶自行承擔。</string>
     <string name="about_copyright_sec_works_title">作品與商標版權</string>
-    <string name="about_copyright_sec_works_body">「Pixiv」、「Pixivision」及相關標識與商標均歸 Pixiv Inc. 所有。\n\n本應用程式內展示的所有插畫、漫畫、小說正文、封面及配圖，其版權均歸對應原作者或權利人所有。\n\n應用程式啟動圖示及專案專屬美術素材僅用於本客戶端識別展示，保留原作者與專案維護者相應權利；未經原作者明確許可，請勿將下載或匯出的作品用於任何商業用途，亦請勿擅自轉載或二次發佈。</string>
+    <string name="about_copyright_sec_works_body">「Pixiv」、「Pixivision」及相關標識與商標均歸 Pixiv Inc. 所有。\n\n本應用程式內展示的所有插畫、漫畫、小說正文、封面及配圖，其版權均歸對應原作者或權利人所有。\n\n應用程式啟動圖示及專案專屬美術素材僅用於本客戶端識別展示，保留原作者與專案維護者相應權利，不適用程式碼區的 Apache-2.0 再分發授權；未經原作者明確許可，請勿將下載或匯出的作品用於任何商業用途，亦請勿擅自轉載或二次發佈。</string>
     <string name="about_copyright_sec_ui_title">設計語言與元件版權</string>
     <string name="about_copyright_sec_ui_body">本應用程式用戶介面基於開源專案 COUI-Kit 建構，遵循 MPL-2.0 協議及上游 TRADEMARKS.md 規範。\n\n「ColorOS」相關名稱與商標均歸 OPPO 廣東移動通信有限公司所有。</string>
     <string name="about_copyright_sec_disclaimer_title">免責聲明</string>
@@ -275,8 +275,8 @@
     <string name="license_field_notes">附加說明</string>
     <string name="license_notes_expand">展開</string>
     <string name="license_notes_collapse">收起</string>
-    <string name="license_coui_notes">COUI-Kit（coui 與 coui-icons 0.0.1-alpha15）自有原始碼適用 Mozilla Public License 2.0（MPL-2.0），依據 MPL-2.0 第 3.2(a) 條可透過上述 GitHub 倉庫取得對應版本原始碼。其內部包含的部分 Skia 陰影幾何演算法適用 BSD-3-Clause 許可，AndroidX 搜尋向量圖示（Copyright 2025 The Android Open Source Project）適用 Apache License 2.0；其餘參考系統向量與圖像素材保留 OPPO / HeyTap / Android 原權利人權利，不因 MPL-2.0 而改變其原有許可歸屬。</string>
-    <string name="license_material_icons_notes">應用程式內操作與詳情頁內置的向量圖示（如 ic_check、ic_download、ic_export、ic_eye、ic_eye_off、ic_open_browser、ic_read_book、ic_restart_alt、ic_view_large 等）源自 Google Material Icons（Apache License 2.0）。</string>
+    <string name="license_coui_notes">COUI-Kit（coui 與 coui-icons 0.0.1-alpha22）自有原始碼適用 Mozilla Public License 2.0（MPL-2.0），依據 MPL-2.0 第 3.2(a) 條可透過上述 GitHub 倉庫取得對應版本原始碼。其內部包含的部分 Skia 陰影幾何演算法適用 BSD-3-Clause 許可，AndroidX 搜尋向量圖示（Copyright 2025 The Android Open Source Project）適用 Apache License 2.0；其餘參考系統向量與圖像素材保留 OPPO / HeyTap / Android 原權利人權利，不因 MPL-2.0 而改變其原有許可歸屬。</string>
+    <string name="license_material_icons_notes">應用程式內操作與詳情頁內置的向量圖示（ic_check、ic_download、ic_export、ic_eye、ic_eye_off、ic_heart_filled、ic_heart_outlined、ic_open_browser、ic_read_book、ic_restart_alt、ic_view_large）源自 Google Material Icons（Apache License 2.0）。</string>
     <string name="license_view_bsd_text">查看 Skia BSD-3-Clause 原文</string>
     <string name="license_view_coui_notice">查看 COUI-Kit NOTICE 原文</string>
     <string name="about_ack_intro">感謝以下開源專案、創作者與社群為「繪光」提供的技術基石與支援：</string>
@@ -296,6 +296,10 @@
     <string name="error_illust_not_found">作品不存在或已刪除</string>
     <string name="error_novel_not_found">小說不存在或已刪除</string>
     <string name="error_search_failed">搜尋失敗</string>
+    <string name="error_rate_limit_title">請求過於頻繁，已觸發頻率限制（HTTP 429）</string>
+    <string name="error_rate_limit_summary">為保護帳號安全，已暫停自動請求。請稍候幾分鐘後再點擊下方「重試」。</string>
+    <string name="error_general_paused_summary">載入出現異常，已暫停自動請求。請檢查網路後點擊下方「重試」。</string>
+    <string name="author_works_title">作者的作品</string>
     <string name="unknown_author">未知作者</string>
     <string name="novel_export_author_line">作者：%1$s</string>
     <string name="ranking_daily">今日</string>
@@ -382,5 +386,5 @@
     <string name="detail_author_other_works">作者的其他作品</string>
     <string name="detail_related_works">相關作品</string>
     <string name="detail_current_work">當前</string>
-    <string name="update_current_release_notes">繪光 v0.1.5 更新說明\n✨ 新增與優化\n• 作者主頁體驗升級：個人簡介、分類欄與作品列表實現一體化順滑捲動；切換「插畫 / 漫畫 / 小說」時獨立保留瀏覽位置，不再重複載入；優化深色模式下「已關注」膠囊按鈕的視覺對比度。\n• 搜尋頁互動升級：列表下滑時搜尋框自動收起並與右側「更多」按鈕並排停靠；進入輸入態時平滑展開全寬並顯示「取消」按鈕，支援透過返回手勢直接退出搜尋。\n• 搜尋結果頁升級：支援「插畫 / 漫畫」「小說」「作者」三欄左右滑動與點擊切換，統一頂欄與篩選區的聯動樣式。\n• 全域導覽與狀態保留：統一「首頁」「搜尋」「我的」三大主頁大標題的捲動收起動效；個人收藏切換「公開 / 非公開」及瀏覽紀錄切換篩選條件時，保留當前頁面狀態與捲動位置，不再重載。\n🐛 問題修復\n• 修復作者主頁捲動異常：解決展開較長簡介或作品列表下滑後，上滑回頂時在半途卡死、滑動異常或位置錯亂的問題。\n• 修復作者主頁列表對齊問題：解決首次載入及切換分類後，作品列表頂部未正確對齊的問題。\n• 修復首頁分類切換卡頓：解決從「推薦」直接點擊切換至「關注新作」（或反向切換）時，頁面卡在「推薦」與「排行榜」之間的問題。</string>
+    <string name="update_current_release_notes">繪光 v0.1.6 更新說明\n✨ 新增與優化\n• 平板與橫屏大屏適配：全應用程式支援中屏與橫屏自適應佈局，瀑布流支援多列展示；作品詳情、小說詳情、作者主頁與 Pixivision 特輯頁支援雙欄分欄瀏覽，特輯頁右側支援雙列作品卡片。\n• 頂部導覽與慣用左手優化：橫屏狀態下，首頁、作者頁、歷史頁、收藏頁與搜尋結果頁的分類切換均改為頂欄懸浮自適應控制項；首頁、作品詳情頁及頂欄分類控制項支援聯動「慣用左手」設定調整左右佈局，並同步更新此選項的說明文案。\n• 豎屏導覽重構：歷史頁、收藏頁與作者主頁在豎屏狀態下改用底部懸浮導覽列切換分類，同時於作者主頁分類位置新增「作者的作品」小標題；橫屏保留空白區域左右滑動切換分類。\n• 異常提示與介面升級：升級 UI 元件庫至新版本；為 HTTP 429 頻率限制及載入異常頁面補充提示說明，觸發異常時自動暫停請求，並為藍色「重試」按鈕補全凝光視效。\n• 私隱與安全強化：增強網絡請求邊界與登入頁暫存資料清理，進一步保護帳號工作階段與本機儲存安全。\n🐛 問題修復\n• 修復歷史與收藏頁面中左滑卡片顯示操作按鈕時觸發全螢幕左右偏移的問題，確保在作品卡片上滑動不再誤觸切換分類。\n• 修復歷史與收藏頁面在豎屏狀態下頂部標題列被裁切的問題，恢復懸浮磨砂頂欄效果。\n• 修復搜尋結果頁反覆閃爍「正在載入」或協程取消提示，並因此頻繁併發請求導致帳號觸發頻率限制的問題。</string>
 </resources>

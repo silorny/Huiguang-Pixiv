@@ -374,10 +374,16 @@ class PixivApiHttpTest {
     fun `cookie and referer are stripped on cross-host redirect`() {
         var redirectedCookie: String? = "UNSET"
         var redirectedReferer: String? = "UNSET"
+        var redirectedCsrf: String? = "UNSET"
+        var redirectedOrigin: String? = "UNSET"
+        var redirectedXrw: String? = "UNSET"
         val externalServer = HttpServer.create(InetSocketAddress(0), 0).apply {
             createContext("/target") { ex ->
                 redirectedCookie = ex.requestHeaders.getFirst("Cookie")
                 redirectedReferer = ex.requestHeaders.getFirst("Referer")
+                redirectedCsrf = ex.requestHeaders.getFirst("X-Csrf-Token")
+                redirectedOrigin = ex.requestHeaders.getFirst("Origin")
+                redirectedXrw = ex.requestHeaders.getFirst("X-Requested-With")
                 val bytes = "ok".toByteArray(Charsets.UTF_8)
                 ex.sendResponseHeaders(200, bytes.size.toLong())
                 ex.responseBody.use { it.write(bytes) }
@@ -399,6 +405,9 @@ class PixivApiHttpTest {
             )
             val req = okhttp3.Request.Builder()
                 .url("http://127.0.0.1:${redirectServer.address.port}/hop")
+                .header("Origin", "https://www.pixiv.net")
+                .header("X-Csrf-Token", "csrf_secret")
+                .header("X-Requested-With", "XMLHttpRequest")
                 .get()
                 .build()
             testApi.client.newCall(req).execute().use { resp ->
@@ -406,6 +415,9 @@ class PixivApiHttpTest {
             }
             assertNull(redirectedCookie)
             assertNull(redirectedReferer)
+            assertNull(redirectedCsrf)
+            assertNull(redirectedOrigin)
+            assertNull(redirectedXrw)
         } finally {
             redirectServer.stop(0)
             externalServer.stop(0)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -65,12 +66,14 @@ import com.itos.coui.icons.CouiIcons
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.menu.CouiMenuItem
 import com.itos.coui.menu.Menu
+import com.itos.coui.navigation.CouiNavigationItem
+import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiColor
 import com.itos.coui.theme.CouiTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -80,15 +83,21 @@ import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.FavoriteStore
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.CenteredReadableBox
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.CircleIconButton
+import moe.huiguang.pixiv.design.components.FloatingSegmentedControl
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.SwipeActionRow
 import moe.huiguang.pixiv.design.components.SwipeRevealController
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.design.components.WorkRow
 import moe.huiguang.pixiv.design.components.WorkRowBody
 import moe.huiguang.pixiv.design.components.WorkRowListSkeleton
+import moe.huiguang.pixiv.design.components.blockParentHorizontalDrag
 import moe.huiguang.pixiv.design.components.dismissSwipeOnOutsideTap
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import moe.huiguang.pixiv.ui.common.workMeta
@@ -197,11 +206,9 @@ fun BookmarksScreen(
         if (session == null) return
         val uid = effectiveUid ?: return
         val current = if (privateOnly) privateFeed else publicFeed
-        if (!force && current.items != null) return
-        if (current.items == null) {
-            if (privateOnly) privateFeed = current.copy(error = null)
-            else publicFeed = current.copy(error = null)
-        }
+        if (!force && (current.items != null || current.error != null)) return
+        if (privateOnly) privateFeed = current.copy(error = null)
+        else publicFeed = current.copy(error = null)
         runCatching { api.bookmarks(uid, limit = 48, offset = 0, privateOnly = privateOnly) }
             .onSuccess { firstPage ->
                 val unique = firstPage.distinctBy { "${it.kind}-${it.id}" }
@@ -215,9 +222,10 @@ fun BookmarksScreen(
                 if (privateOnly) privateFeed = updated else publicFeed = updated
             }
             .onFailure { err ->
+                if (err is CancellationException) throw err
                 val latest = if (privateOnly) privateFeed else publicFeed
                 if (latest.items == null) {
-                    val errored = latest.copy(error = err.message)
+                    val errored = latest.copy(error = err.message ?: "error")
                     if (privateOnly) privateFeed = errored else publicFeed = errored
                 }
             }
@@ -259,9 +267,10 @@ fun BookmarksScreen(
                     )
                     if (privateOnly) privateFeed = updated else publicFeed = updated
                 }
-                .onFailure {
+                .onFailure { err ->
+                    if (err is CancellationException) throw err
                     val latest = if (privateOnly) privateFeed else publicFeed
-                    val updated = latest.copy(loadingMore = false)
+                    val updated = latest.copy(loadingMore = false, ended = true)
                     if (privateOnly) privateFeed = updated else publicFeed = updated
                 }
         }
@@ -343,6 +352,8 @@ fun BookmarksScreen(
         stringResource(R.string.bookmarks_visibility_public),
         stringResource(R.string.bookmarks_visibility_private),
     )
+    val isLandscapeSplit = rememberIsLandscapeSplit()
+    val showVisibilitySwitcher = !isOtherUser && session != null
 
     Box(
         Modifier
@@ -362,66 +373,102 @@ fun BookmarksScreen(
                 .couiBackdrop(backdrop)
                 .background(colors.background),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                Spacer(Modifier.height(statusTop + 56.dp + 8.dp))
-                if (!isOtherUser && session != null) {
-                    SegmentedControl(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        backdrop = effectBackdrop,
-                        labels = visibilityLabels,
-                        selectedIndex = activeVisibility,
-                        onSelected = { target ->
-                            scope.launch { visibilityPager.animateScrollToPage(target) }
-                        },
-                    )
+            HorizontalPager(
+                state = visibilityPager,
+                beyondViewportPageCount = 1,
+                userScrollEnabled = isLandscapeSplit && !isOtherUser,
+                modifier = Modifier.fillMaxSize(),
+            ) { selectedVisibility ->
+                val isPrivate = !isOtherUser && selectedVisibility == 1
+                val feed = if (isPrivate) privateFeed else publicFeed
+                val visibleItems = remember(feed.items, filter) {
+                    feed.items?.filter { matchesBookmarkFilter(it, filter) }
                 }
-                HorizontalPager(
-                    state = visibilityPager,
-                    beyondViewportPageCount = 1,
-                    userScrollEnabled = !isOtherUser,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) { selectedVisibility ->
-                    val isPrivate = !isOtherUser && selectedVisibility == 1
-                    val feed = if (isPrivate) privateFeed else publicFeed
-                    val visibleItems = remember(feed.items, filter) {
-                        feed.items?.filter { matchesBookmarkFilter(it, filter) }
-                    }
-                    BookmarksContent(
-                        session = session != null,
-                        showVisibilitySwitch = !isOtherUser,
-                        isOtherUser = isOtherUser,
-                        isPrivate = isPrivate,
-                        isWaterfall = isWaterfall,
-                        revealR18 = state.revealR18,
-                        items = visibleItems,
-                        error = feed.error,
-                        loadingMore = feed.loadingMore,
-                        listState = listStates[selectedVisibility],
-                        gridState = gridStates[selectedVisibility],
-                        topPadding = 6.dp,
-                        bottomPadding = navBottom + 24.dp,
-                        effectBackdrop = effectBackdrop,
-                        swipeController = swipeController,
-                        onOpen = onOpen,
-                        onToggleVisibility = { item -> toggleVisibility(item, fromPrivate = isPrivate) },
-                        onLoadMore = { loadMore(selectedVisibility) },
-                        onRetry = {
-                            scope.launch { fetchInitial(privateOnly = isPrivate, force = true) }
-                        },
-                    )
-                }
+                BookmarksContent(
+                    session = session != null,
+                    showVisibilitySwitch = !isOtherUser,
+                    isOtherUser = isOtherUser,
+                    isPrivate = isPrivate,
+                    isWaterfall = isWaterfall,
+                    revealR18 = state.revealR18,
+                    items = visibleItems,
+                    error = feed.error,
+                    loadingMore = feed.loadingMore,
+                    listState = listStates[selectedVisibility],
+                    gridState = gridStates[selectedVisibility],
+                    topPadding = statusTop + 56.dp + 8.dp,
+                    bottomPadding = navBottom + if (!isLandscapeSplit && showVisibilitySwitcher) 88.dp else 24.dp,
+                    effectBackdrop = effectBackdrop,
+                    swipeController = swipeController,
+                    onOpen = onOpen,
+                    onToggleVisibility = { item -> toggleVisibility(item, fromPrivate = isPrivate) },
+                    onLoadMore = { loadMore(selectedVisibility) },
+                    onRetry = {
+                        scope.launch { fetchInitial(privateOnly = isPrivate, force = true) }
+                    },
+                )
             }
         }
 
+        if (!isLandscapeSplit && showVisibilitySwitcher) {
+            val navItems = listOf(
+                CouiNavigationItem(
+                    title = stringResource(R.string.bookmarks_visibility_public),
+                    icon = CouiIcons.Outlined.Favorite,
+                    selectedIcon = CouiIcons.Filled.Favorite,
+                ),
+                CouiNavigationItem(
+                    title = stringResource(R.string.bookmarks_visibility_private),
+                    icon = CouiIcons.Filled.Lock,
+                    selectedIcon = CouiIcons.Filled.Lock,
+                ),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            ) {
+                NavigationBar(
+                    backdrop = backdrop,
+                    items = navItems,
+                    selectedIndex = activeVisibility,
+                    onSelection = { target ->
+                        scope.launch { visibilityPager.animateScrollToPage(target) }
+                    },
+                )
+            }
+        }
+
+        val landscapeSwitcher: (@Composable () -> Unit)? = if (isLandscapeSplit && showVisibilitySwitcher) {
+            {
+                FloatingSegmentedControl(
+                    labels = visibilityLabels,
+                    selectedIndex = activeVisibility,
+                    onSelected = { target ->
+                        scope.launch { visibilityPager.animateScrollToPage(target) }
+                    },
+                    backdrop = backdrop,
+                    dark = dark,
+                )
+            }
+        } else {
+            null
+        }
         FloatingSecondaryTopBar(
             title = stringResource(R.string.bookmarks_title),
             backdrop = backdrop,
             onBack = onBack,
+            afterTitle = if (state.leftHanded && landscapeSwitcher != null) {
+                { landscapeSwitcher() }
+            } else {
+                null
+            },
             trailing = {
+                if (!state.leftHanded && landscapeSwitcher != null) {
+                    landscapeSwitcher()
+                    Spacer(Modifier.width(8.dp))
+                }
                 Box {
                     CircleIconButton(
                         icon = CouiIcons.Filled.More,
@@ -583,8 +630,9 @@ private fun BookmarksContent(
     when {
         !session -> EmptyHint(stringResource(R.string.bookmarks_need_login))
         isWaterfall -> {
+            val columns = rememberAdaptiveGridColumns()
             LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(2),
+                columns = StaggeredGridCells.Fixed(columns),
                 state = gridState,
                 modifier = Modifier
                     .fillMaxSize()
@@ -603,7 +651,7 @@ private fun BookmarksContent(
                 }
                 when {
                     error != null -> item(span = StaggeredGridItemSpan.FullLine, key = "error") {
-                        ErrorHint(error = error, onRetry = onRetry)
+                        ErrorHint(error = error, backdrop = effectBackdrop, onRetry = onRetry)
                     }
                     items == null -> item(span = StaggeredGridItemSpan.FullLine, key = "skeleton") {
                         WaterfallSkeleton(topPadding = 8.dp, bottomPadding = bottomPadding)
@@ -620,6 +668,7 @@ private fun BookmarksContent(
                             ArtworkCard(
                                 item = item.toSearchItem(),
                                 revealR18 = revealR18,
+                                modifier = Modifier.blockParentHorizontalDrag(),
                                 onClick = { onOpen(item.kind, item.id) },
                             )
                         }
@@ -676,7 +725,7 @@ private fun BookmarksContent(
                 }
                 when {
                     error != null -> item(key = "error") {
-                        ErrorHint(error = error, onRetry = onRetry)
+                        ErrorHint(error = error, backdrop = effectBackdrop, onRetry = onRetry)
                     }
                     items == null -> item(key = "skeleton") {
                         WorkRowListSkeleton(topPadding = 8.dp, bottomPadding = bottomPadding)
@@ -690,44 +739,47 @@ private fun BookmarksContent(
                             key = { "${if (isPrivate) "priv" else "pub"}-${it.kind}-${it.id}" },
                             contentType = { "bookmarkRow" },
                         ) { item ->
-                            if (showVisibilitySwitch) {
-                                val rowKey = "${if (isPrivate) "priv" else "pub"}-${item.kind}-${item.id}"
-                                SwipeActionRow(
-                                    rowKey = rowKey,
-                                    controller = swipeController,
-                                    backdrop = effectBackdrop,
-                                    actionColor = actionColor,
-                                    actionLabel = actionLabel,
-                                    confirmActionLabel = confirmLabel,
-                                    onClick = { onOpen(item.kind, item.id) },
-                                    onCommit = { onToggleVisibility(item) },
-                                    actionIcon = { _, _ ->
-                                        Image(
-                                            painter = painterResource(iconRes),
-                                            contentDescription = null,
-                                            colorFilter = ColorFilter.tint(Color.White),
-                                            modifier = Modifier.size(24.dp),
+                            CenteredReadableBox {
+                                if (showVisibilitySwitch) {
+                                    val rowKey = "${if (isPrivate) "priv" else "pub"}-${item.kind}-${item.id}"
+                                    SwipeActionRow(
+                                        rowKey = rowKey,
+                                        controller = swipeController,
+                                        backdrop = effectBackdrop,
+                                        actionColor = actionColor,
+                                        actionLabel = actionLabel,
+                                        confirmActionLabel = confirmLabel,
+                                        onClick = { onOpen(item.kind, item.id) },
+                                        onCommit = { onToggleVisibility(item) },
+                                        actionIcon = { _, _ ->
+                                            Image(
+                                                painter = painterResource(iconRes),
+                                                contentDescription = null,
+                                                colorFilter = ColorFilter.tint(Color.White),
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        },
+                                    ) {
+                                        WorkRowBody(
+                                            thumbUrl = item.thumbUrl,
+                                            title = item.title,
+                                            author = item.userName,
+                                            meta = workMeta(item.kind, item.illustType, item.id),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(10.dp),
                                         )
-                                    },
-                                ) {
-                                    WorkRowBody(
+                                    }
+                                } else {
+                                    WorkRow(
                                         thumbUrl = item.thumbUrl,
                                         title = item.title,
                                         author = item.userName,
                                         meta = workMeta(item.kind, item.illustType, item.id),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(10.dp),
+                                        modifier = Modifier.blockParentHorizontalDrag(),
+                                        onClick = { onOpen(item.kind, item.id) },
                                     )
                                 }
-                            } else {
-                                WorkRow(
-                                    thumbUrl = item.thumbUrl,
-                                    title = item.title,
-                                    author = item.userName,
-                                    meta = workMeta(item.kind, item.illustType, item.id),
-                                    onClick = { onOpen(item.kind, item.id) },
-                                )
                             }
                         }
                         if (loadingMore) {
@@ -754,20 +806,14 @@ private fun BookmarksContent(
 }
 
 @Composable
-private fun ErrorHint(error: String, onRetry: () -> Unit) {
-    val colors = CouiPageDefaults.themeColors()
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(32.dp, vertical = 72.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = error, kind = CouiTextKind.ItemSummary, color = colors.summary)
-            Spacer(Modifier.height(16.dp))
-            PrimaryButton(text = stringResource(R.string.action_retry), onClick = onRetry)
-        }
-    }
+private fun ErrorHint(error: String, backdrop: CouiBackdrop, onRetry: () -> Unit) {
+    RetryErrorState(
+        error = error,
+        onRetry = onRetry,
+        backdrop = backdrop,
+        fillScreen = false,
+        modifier = Modifier.padding(vertical = 40.dp),
+    )
 }
 
 @Composable

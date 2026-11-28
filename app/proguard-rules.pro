@@ -7,8 +7,10 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Release 环境下裁剪 Verbose / Debug 日志调用
+# Release 环境下裁剪调试与诊断日志调用
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
+    public static int i(...);
+    public static int w(...);
 }

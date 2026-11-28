@@ -124,7 +124,9 @@ internal fun copyPlainText(
 internal fun openExternalUrl(context: Context, url: String) {
     val parsed = runCatching { Uri.parse(url.trim()) }.getOrNull()
     val scheme = parsed?.scheme?.lowercase()
-    if (parsed == null || (scheme != "http" && scheme != "https")) {
+    val host = parsed?.host
+    val hasValidHost = !host.isNullOrBlank() && host.contains('.')
+    if (parsed == null || (scheme != "http" && scheme != "https") || !hasValidHost || !parsed.userInfo.isNullOrEmpty()) {
         Toast.makeText(context, context.getString(R.string.action_failed), Toast.LENGTH_SHORT).show()
         return
     }

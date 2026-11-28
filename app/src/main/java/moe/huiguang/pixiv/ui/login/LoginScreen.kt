@@ -73,6 +73,21 @@ fun LoginScreen(
     val noSession = stringResource(R.string.login_no_session)
     val verifyingText = stringResource(R.string.login_verifying)
 
+    fun clearWebViewSession() {
+        runCatching {
+            webView?.apply {
+                clearCache(true)
+                clearHistory()
+                clearFormData()
+            }
+            CookieManager.getInstance().apply {
+                removeAllCookies(null)
+                flush()
+            }
+            WebStorage.getInstance().deleteAllData()
+        }
+    }
+
     fun submit() {
         val cookie = CookieManager.getInstance().getCookie(SITE)
         if (cookie.isNullOrBlank() || !cookie.contains("PHPSESSID")) {
@@ -88,6 +103,9 @@ fun LoginScreen(
             } else {
                 loginSucceeded = true
                 settingsStore.saveSession(cookie, userId)
+                // Keep the verified cookie only in Keystore-encrypted app storage,
+                // clearing any plaintext/SQLite copy held inside WebView.
+                clearWebViewSession()
                 onLoggedIn()
             }
         }
@@ -95,16 +113,8 @@ fun LoginScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            clearWebViewSession()
             webView?.destroy()
-            if (!loginSucceeded && settingsStore.current.session == null) {
-                runCatching {
-                    CookieManager.getInstance().apply {
-                        removeAllCookies(null)
-                        flush()
-                    }
-                    WebStorage.getInstance().deleteAllData()
-                }
-            }
         }
     }
 

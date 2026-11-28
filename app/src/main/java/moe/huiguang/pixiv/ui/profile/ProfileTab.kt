@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
@@ -56,6 +58,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.UserProfile
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
 import moe.huiguang.pixiv.design.components.FloatingTabHeader
 import moe.huiguang.pixiv.design.components.GlowStatCapsule
 import moe.huiguang.pixiv.design.components.NextChevron
@@ -147,8 +150,14 @@ fun ProfileTab(
                 .fillMaxSize()
                 .couiVerticalScroll(scroll)
                 .heightIn(min = minScrollHeight),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(statusTop + 64.dp))
+            Column(
+                Modifier
+                    .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                    .fillMaxWidth(),
+            ) {
+                Spacer(Modifier.height(statusTop + 64.dp))
         if (session == null) {
             Group(title = stringResource(R.string.profile_group_account)) {
                 Item(
@@ -246,6 +255,7 @@ fun ProfileTab(
 
         // Clear the floating navigation capsule, including at large font scales.
         Spacer(Modifier.height(padding.calculateBottomPadding() + 24.dp))
+            }
         }
     }
 }

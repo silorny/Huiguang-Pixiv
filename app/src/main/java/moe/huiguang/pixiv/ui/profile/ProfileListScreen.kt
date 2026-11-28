@@ -40,7 +40,9 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.model.UserSearchItem
 import moe.huiguang.pixiv.data.net.PixivApi
+import moe.huiguang.pixiv.design.CenteredReadableBox
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.WorkRow
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
 import moe.huiguang.pixiv.ui.common.workMeta
@@ -218,11 +220,18 @@ fun ProfileListScreen(
         if (loadMoreTrigger > 0) loadMore()
     }
 
+    val errorBackdrop = rememberCouiBackdrop()
     Box(
         Modifier
             .fillMaxSize()
             .background(colors.background),
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .couiBackdrop(errorBackdrop)
+                .background(colors.background),
+        )
         Box(
             Modifier
                 .fillMaxSize()
@@ -241,17 +250,11 @@ fun ProfileListScreen(
                 }
 
                 error != null -> {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(top = listTopPadding, start = 32.dp, end = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Spacer(Modifier.height(64.dp))
-                        Text(text = error!!, kind = CouiTextKind.ItemSummary, color = colors.summary)
-                        Spacer(Modifier.height(16.dp))
-                        PrimaryButton(text = stringResource(R.string.action_retry), onClick = { reloadKey++ })
-                    }
+                    RetryErrorState(
+                        error = error,
+                        onRetry = { reloadKey++ },
+                        backdrop = errorBackdrop,
+                    )
                 }
 
                 (kind == "works" && works.isEmpty()) || (kind != "works" && users.isEmpty()) -> {
@@ -272,16 +275,18 @@ fun ProfileListScreen(
                         contentPadding = PaddingValues(top = listTopPadding, bottom = navBottom + 24.dp),
                     ) {
                         items(works, key = { "${it.kind}-${it.id}" }) { item ->
-                            WorkRow(
-                                thumbUrl = item.thumbUrl,
-                                title = item.title,
-                                author = item.author,
-                                meta = workMeta(item.kind, item.illustType, item.id),
-                                onClick = {
-                                    val routeKind = if (item.kind == HistoryEntry.KIND_NOVEL) "novel" else "illust"
-                                    onOpenWork(routeKind, item.id)
-                                },
-                            )
+                            CenteredReadableBox {
+                                WorkRow(
+                                    thumbUrl = item.thumbUrl,
+                                    title = item.title,
+                                    author = item.author,
+                                    meta = workMeta(item.kind, item.illustType, item.id),
+                                    onClick = {
+                                        val routeKind = if (item.kind == HistoryEntry.KIND_NOVEL) "novel" else "illust"
+                                        onOpenWork(routeKind, item.id)
+                                    },
+                                )
+                            }
                         }
                         item(key = "works-footer") {
                             LaunchedEffect(works.size, endReached) {
@@ -315,13 +320,15 @@ fun ProfileListScreen(
                         contentPadding = PaddingValues(top = listTopPadding, bottom = navBottom + 24.dp),
                     ) {
                         items(users, key = { it.userId }) { user ->
-                            WorkRow(
-                                thumbUrl = user.avatarUrl,
-                                title = user.userName.ifBlank { user.userId },
-                                author = "",
-                                meta = workMeta(HistoryEntry.KIND_AUTHOR, 0, user.userId),
-                                onClick = { onOpenAuthor(user.userId) },
-                            )
+                            CenteredReadableBox {
+                                WorkRow(
+                                    thumbUrl = user.avatarUrl,
+                                    title = user.userName.ifBlank { user.userId },
+                                    author = "",
+                                    meta = workMeta(HistoryEntry.KIND_AUTHOR, 0, user.userId),
+                                    onClick = { onOpenAuthor(user.userId) },
+                                )
+                            }
                         }
                         item(key = "footer") {
                             LaunchedEffect(users.size, endReached) {

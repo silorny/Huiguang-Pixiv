@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -120,31 +121,37 @@ internal fun ProfileHeader(
         if (coverUrl.isNotBlank()) {
             // Fused cover + overlapping avatar + far-right UID strip.
             Box(Modifier.fillMaxWidth()) {
-                Box(
+                BoxWithConstraints(
                     Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 38.dp)
-                        .aspectRatio(1.9f)
-                        .clip(AuthorCoverShape)
-                        .background(colors.card, AuthorCoverShape),
+                        .padding(bottom = 38.dp),
                 ) {
-                    RetryableImage(
-                        url = coverUrl,
-                        contentDescription = profile?.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    val coverHeight = (maxWidth / 1.9f).coerceAtMost(220.dp)
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(56.dp)
-                            .align(Alignment.BottomCenter)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Transparent, colors.background.copy(alpha = 0.28f)),
+                            .height(coverHeight)
+                            .clip(AuthorCoverShape)
+                            .background(colors.card, AuthorCoverShape),
+                    ) {
+                        RetryableImage(
+                            url = coverUrl,
+                            contentDescription = profile?.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, colors.background.copy(alpha = 0.28f)),
+                                    ),
                                 ),
-                            ),
-                    )
+                        )
+                    }
                 }
 
                 Row(

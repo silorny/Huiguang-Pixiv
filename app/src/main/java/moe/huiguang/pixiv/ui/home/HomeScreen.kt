@@ -117,14 +117,20 @@ import moe.huiguang.pixiv.data.model.SearchItem
 import moe.huiguang.pixiv.data.net.PixivApi
 import moe.huiguang.pixiv.data.store.HomeFeedCache
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.CenteredReadableBox
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.ArtworkCardOuterShape
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.WaterfallSkeleton
 import moe.huiguang.pixiv.design.components.downgradeWaterfallThumbUrl
+import moe.huiguang.pixiv.design.components.rememberAdaptiveSegmentedControlWidth
 import moe.huiguang.pixiv.design.components.rememberCouiCardIndication
 
 internal const val HOME_FILTER_ILLUST = 1
@@ -178,6 +184,7 @@ fun HomeTopChrome(
     backdrop: CouiBackdrop,
     effectBackdrop: CouiBackdrop = backdrop,
     statusTop: Dp,
+    leftHanded: Boolean = false,
 ) {
     val section = tabState.section
     val rankingTab = tabState.rankingTab
@@ -251,6 +258,7 @@ fun HomeTopChrome(
             }
         },
         backdrop = backdrop,
+        leftHanded = leftHanded,
     )
 }
 
@@ -422,7 +430,10 @@ fun HomeScreen(
                     bottomPadding = navBottom + 104.dp,
                 )
 
-                1 -> ErrorState((state as? HomeUiState.Error)?.message ?: "") { vm.refresh(sessionId) }
+                1 -> ErrorState(
+                    message = (state as? HomeUiState.Error)?.message ?: "",
+                    backdrop = refreshBackdrop,
+                ) { vm.refresh(sessionId) }
 
                 else -> {
                     val current = state as? HomeUiState.Content ?: return@Crossfade
@@ -558,8 +569,9 @@ fun HomeScreen(
                                 }
                         }
 
+                        val columns = rememberAdaptiveGridColumns()
                         LazyVerticalStaggeredGrid(
-                            columns = StaggeredGridCells.Fixed(2),
+                            columns = StaggeredGridCells.Fixed(columns),
                             state = gridState,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -575,22 +587,24 @@ fun HomeScreen(
                         ) {
                             if (sessionId == null || current.feed.isFallback) {
                                 item(span = StaggeredGridItemSpan.FullLine, key = "login-hint") {
-                                    Group {
-                                        Item(
-                                            summary = {
+                                    CenteredReadableBox {
+                                        Group {
+                                            Item(
+                                                summary = {
+                                                    Text(
+                                                        text = stringResource(R.string.home_login_hint_summary),
+                                                        kind = CouiTextKind.ItemSummary,
+                                                        color = colors.summary,
+                                                    )
+                                                },
+                                                onClick = onLogin,
+                                            ) {
                                                 Text(
-                                                    text = stringResource(R.string.home_login_hint_summary),
-                                                    kind = CouiTextKind.ItemSummary,
-                                                    color = colors.summary,
+                                                    text = stringResource(R.string.home_login_hint),
+                                                    kind = CouiTextKind.ItemTitle,
+                                                    color = colors.title,
                                                 )
-                                            },
-                                            onClick = onLogin,
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.home_login_hint),
-                                                kind = CouiTextKind.ItemTitle,
-                                                color = colors.title,
-                                            )
+                                            }
                                         }
                                     }
                                 }
@@ -624,22 +638,25 @@ fun HomeScreen(
                             if (visible.isEmpty() && !isLoadingMore) {
                                 val tabError = if (selected == 1 && rankingTab != 0) rankingErrors[rankingTab] else null
                                 item(span = StaggeredGridItemSpan.FullLine, key = "empty-$selected-$activeCategory") {
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 40.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    ) {
-                                        Text(
-                                            text = tabError ?: stringResource(R.string.home_section_empty),
-                                            kind = CouiTextKind.ItemSummary,
-                                            color = colors.summary,
+                                    if (tabError != null) {
+                                        RetryErrorState(
+                                            error = tabError,
+                                            onRetry = { vm.ensureRankingTab(rankingTab, forceRetry = true) },
+                                            backdrop = refreshBackdrop,
+                                            fillScreen = false,
                                         )
-                                        if (tabError != null) {
-                                            PrimaryButton(
-                                                text = stringResource(R.string.action_retry),
-                                                onClick = { vm.ensureRankingTab(rankingTab, forceRetry = true) },
+                                    } else {
+                                        Column(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 40.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.home_section_empty),
+                                                kind = CouiTextKind.ItemSummary,
+                                                color = colors.summary,
                                             )
                                         }
                                     }
@@ -748,9 +765,11 @@ private fun HomeOverlayHeader(
     categoryItems: List<CouiMenuItem<Int>>,
     onCategorySelected: (Int) -> Unit,
     backdrop: CouiBackdrop,
+    leftHanded: Boolean,
 ) {
     val colors = CouiPageDefaults.themeColors()
     val density = LocalDensity.current
+    val isLandscapeSplit = rememberIsLandscapeSplit()
     val collapseProgressState = animateFloatAsState(
         targetValue = if (collapsed) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.88f, stiffness = 460f),
@@ -779,9 +798,10 @@ private fun HomeOverlayHeader(
     val collapsedEndPad = 20.dp + 40.dp + 8.dp
     val switcherShiftYPx = with(density) { (12.dp - (64.dp + 6.dp)).toPx() }
     val switcherBaseTopPx = with(density) { (statusTop + 64.dp + 6.dp).roundToPx() }
-    val defaultSidePadPx = with(density) { 16.dp.roundToPx() }
+    val defaultSidePadPx = with(density) { (if (isLandscapeSplit) 20.dp else 16.dp).roundToPx() }
     val collapsedStartPx = with(density) { collapsedStartPad.roundToPx() }
     val collapsedEndPx = with(density) { collapsedEndPad.roundToPx() }
+    val switcherMaxWidthPx = with(density) { AdaptiveTokens.SwitcherMaxWidth.roundToPx() }
 
     Box(Modifier.fillMaxWidth()) {
         HomeTopBarSurface(
@@ -801,12 +821,20 @@ private fun HomeOverlayHeader(
                     val p = collapseProgressState.value.coerceIn(0f, 1f)
                     val startPx = (defaultSidePadPx + (collapsedStartPx - defaultSidePadPx) * p).toInt()
                     val endPx = (defaultSidePadPx + (collapsedEndPx - defaultSidePadPx) * p).toInt()
-                    val childW = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
-                    val placeable = measurable.measure(
-                        constraints.copy(minWidth = childW, maxWidth = childW),
-                    )
+                    val availableW = (constraints.maxWidth - startPx - endPx).coerceAtLeast(0)
+                    val placeable = if (isLandscapeSplit) {
+                        measurable.measure(constraints.copy(minWidth = 0, maxWidth = availableW))
+                    } else {
+                        val childW = availableW.coerceAtMost(switcherMaxWidthPx)
+                        measurable.measure(constraints.copy(minWidth = childW, maxWidth = childW))
+                    }
+                    val offsetX = when {
+                        !isLandscapeSplit -> startPx + (availableW - placeable.width) / 2
+                        leftHanded -> startPx
+                        else -> startPx + availableW - placeable.width
+                    }
                     layout(constraints.maxWidth, switcherBaseTopPx + placeable.height) {
-                        placeable.placeRelative(startPx, switcherBaseTopPx)
+                        placeable.placeRelative(offsetX, switcherBaseTopPx)
                     }
                 }
                 .graphicsLayer {
@@ -817,6 +845,7 @@ private fun HomeOverlayHeader(
                 selected = section,
                 onSelected = onSectionSelected,
                 backdrop = backdrop,
+                fillWidth = !isLandscapeSplit,
             )
         }
     }
@@ -1022,14 +1051,21 @@ private fun SectionSwitcher(
     onSelected: (Int) -> Unit,
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
+    fillWidth: Boolean = true,
 ) {
+    val labels = listOf(
+        stringResource(R.string.home_section_recommend),
+        stringResource(R.string.home_section_ranking),
+        stringResource(R.string.home_section_following),
+    )
+    val controlModifier = if (fillWidth) {
+        modifier.fillMaxWidth()
+    } else {
+        modifier.width(rememberAdaptiveSegmentedControlWidth(labels))
+    }
     SegmentedControl(
-        modifier = modifier.fillMaxWidth(),
-        labels = listOf(
-            stringResource(R.string.home_section_recommend),
-            stringResource(R.string.home_section_ranking),
-            stringResource(R.string.home_section_following),
-        ),
+        modifier = controlModifier,
+        labels = labels,
         selectedIndex = selected,
         onSelected = onSelected,
         backdrop = backdrop,
@@ -1037,23 +1073,16 @@ private fun SectionSwitcher(
 }
 
 @Composable
-private fun ErrorState(message: String, onRetry: () -> Unit) {
-    val colors = CouiPageDefaults.themeColors()
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = message.ifBlank { stringResource(R.string.error_load_failed) },
-            kind = CouiTextKind.ItemSummary,
-            color = colors.summary,
-        )
-        Spacer(Modifier.height(16.dp))
-        PrimaryButton(text = stringResource(R.string.action_retry), onClick = onRetry)
-    }
+private fun ErrorState(
+    message: String,
+    backdrop: CouiBackdrop? = null,
+    onRetry: () -> Unit,
+) {
+    RetryErrorState(
+        error = message,
+        onRetry = onRetry,
+        backdrop = backdrop,
+    )
 }
 
 internal fun filterHomeWorkStream(

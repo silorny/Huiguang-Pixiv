@@ -201,7 +201,7 @@ fun parseCaptionContent(rawHtml: String): CaptionContent {
         val start = match.range.first
         val end = start + url.length
         if (overlaps(start, end)) return@forEach
-        val target = resolveCaptionTarget(url) ?: CaptionTarget.External(url)
+        val target = resolveCaptionTarget(url) ?: return@forEach
         allLinks += CaptionLink(
             start = start,
             end = end,
@@ -271,14 +271,22 @@ private fun resolveCaptionTarget(raw: String): CaptionTarget? {
         }
     }
     return when {
-        candidate.startsWith("https://", ignoreCase = true) ||
-            candidate.startsWith("http://", ignoreCase = true) -> CaptionTarget.External(candidate)
-        candidate.startsWith("/") -> {
+        isSafeExternalHttpUrl(candidate) -> CaptionTarget.External(candidate)
+        candidate.startsWith("/") && !candidate.startsWith("//") -> {
             // Relative Pixiv path that isn't a direct illust/novel/user target (e.g. series)
             CaptionTarget.External("https://www.pixiv.net$candidate")
         }
         else -> null
     }
+}
+
+private fun isSafeExternalHttpUrl(raw: String): Boolean {
+    val parsed = runCatching { java.net.URL(raw) }.getOrNull() ?: return false
+    val scheme = parsed.protocol?.lowercase() ?: return false
+    if (scheme != "http" && scheme != "https") return false
+    if (!parsed.userInfo.isNullOrEmpty()) return false
+    val host = parsed.host?.takeIf { it.isNotBlank() } ?: return false
+    return host.contains('.')
 }
 
 private fun unwrapPixivJump(raw: String): String {

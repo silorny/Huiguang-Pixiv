@@ -130,4 +130,11 @@ class LinkedWorksTest {
         assertEquals("X", content.text.substring(content.links[3].start, content.links[3].end))
         assertEquals("https://afdian.com/a/demo", content.text.substring(content.links[4].start, content.links[4].end))
     }
+
+    @Test
+    fun rejectsUnsafeOrUserinfoExternalUrlsInCaptions() {
+        val html = """<a href="https://pixiv.net@evil.example/phish">bad</a> <a href="//evil.example/proto">rel</a> https://user:pass@bad.example/test"""
+        val content = parseCaptionContent(html)
+        assertTrue(content.links.isEmpty())
+    }
 }

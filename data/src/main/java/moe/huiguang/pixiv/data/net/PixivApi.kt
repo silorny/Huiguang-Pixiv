@@ -165,6 +165,9 @@ class PixivApi(
             if (!isAllowedPixivHost(request)) {
                 builder.removeHeader("Referer")
                 builder.removeHeader("Accept-Language")
+                builder.removeHeader("Origin")
+                builder.removeHeader("X-Csrf-Token")
+                builder.removeHeader("X-Requested-With")
             }
             // Enforce cookie scope on every network hop (including 30x redirects)
             // so session cookies never leak to non-Pixiv hosts or over cleartext.
@@ -245,7 +248,7 @@ class PixivApi(
 
         val (code, body) = illustPair
         if (code == 400 || code == 401) return null
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val illustFeed = parseHomePayload(body, novel = false) ?: return null
         val novelFeed = novelPair?.takeIf { it.first == 200 }?.let { (_, raw) ->
             runCatching { parseHomePayload(raw, novel = true) }.getOrNull()
@@ -447,7 +450,7 @@ class PixivApi(
             cookie = null,
             userAgent = DESKTOP_UA,
         )
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         return PixivisionParser.parseDetail(id, html, lang)
     }
 
@@ -509,7 +512,7 @@ class PixivApi(
             url = "$baseUrl/ranking.php?mode=${mode.apiMode}$content&p=$page&format=json",
             userAgent = DESKTOP_UA,
         )
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val trimmed = body.trimStart()
         if (!trimmed.startsWith("{")) throw PixivException("HTTP $code: ${trimmed.take(220)}")
         val root = JSONObject(trimmed)
@@ -597,7 +600,7 @@ class PixivApi(
         if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/illust/$id")
         if (code == 404) return null
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return null
         val payload = json.optJSONObject("body") ?: return null
@@ -642,7 +645,7 @@ class PixivApi(
         if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/novel/$id")
         if (code == 404) return null
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return null
         val payload = json.optJSONObject("body") ?: return null
@@ -872,7 +875,7 @@ class PixivApi(
         val (code, body) = postWithCsrf(url, referer = referer) {
             payload.toRequestBody("application/json; charset=utf-8".toMediaType())
         }
-        logApi("addBookmark(novel=$novel, id=$id) -> HTTP $code body=${body.take(200)}")
+        logApi("addBookmark(novel=$novel) -> HTTP $code")
         if (code == 429) throw PixivException("HTTP 429", 429)
         if (code !in 200..299) return null
         val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
@@ -914,7 +917,7 @@ class PixivApi(
                 }
             }.build()
         }
-        logApi("removeBookmark(novel=$novel, id=$id, bid=$resolvedId) -> HTTP $code body=${body.take(200)}")
+        logApi("removeBookmark(novel=$novel) -> HTTP $code")
         if (code == 429) throw PixivException("HTTP 429", 429)
         if (code == 404) return true
         if (code !in 200..299) return false
@@ -956,7 +959,7 @@ class PixivApi(
         val (code, body) = postWithCsrf(url, referer = referer) {
             payload.toRequestBody("application/json; charset=utf-8".toMediaType())
         }
-        logApi("setBookmarkVisibility(novel=$novel, id=$id, bid=$resolvedId, private=$makePrivate) -> HTTP $code body=${body.take(200)}")
+        logApi("setBookmarkVisibility(novel=$novel, private=$makePrivate) -> HTTP $code")
         if (code == 429) throw PixivException("HTTP 429", 429)
         if (code !in 200..299) return false
         val json = runCatching { JSONObject(body) }.getOrNull() ?: return false
@@ -1006,7 +1009,7 @@ class PixivApi(
                 .addFormDataPart("restrict", "0")
                 .build()
         }
-        logApi("followUser(uid=$userId) -> HTTP $code body=${body.take(200)}")
+        logApi("followUser -> HTTP $code")
         if (code == 429) throw PixivException("HTTP 429", 429)
         if (code !in 200..299) return false
         val json = runCatching { JSONObject(body) }.getOrNull() ?: return false
@@ -1026,7 +1029,7 @@ class PixivApi(
                 .addFormDataPart("user_id", userId)
                 .build()
         }
-        logApi("unfollowUser(uid=$userId) -> HTTP $code body=${body.take(200)}")
+        logApi("unfollowUser -> HTTP $code")
         if (code == 429) throw PixivException("HTTP 429", 429)
         if (code == 404) return true
         if (code !in 200..299) return false
@@ -1042,6 +1045,7 @@ class PixivApi(
         map: (JSONObject) -> BookmarkItem,
     ): List<BookmarkItem> {
         val (code, body) = getJson("$base?tag=&offset=$offset&limit=$limit&rest=$rest&lang=ja")
+        if (code == 429) throw PixivException("HTTP 429", 429)
         if (code != 200) return emptyList()
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
@@ -1104,7 +1108,7 @@ class PixivApi(
         if (!isValidPathId(id)) return null
         val (code, body) = getJson("$baseUrl/ajax/user/$id?full=1")
         if (code == 404) return null
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return null
         val b = json.optJSONObject("body") ?: return null
@@ -1182,7 +1186,7 @@ class PixivApi(
         if (!isValidPathId(id)) return emptyList()
         val (code, body) = getJson("$baseUrl/ajax/user/$id/profile/all")
         if (code == 404) return emptyList()
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
         val b = json.optJSONObject("body") ?: return emptyList()
@@ -1312,7 +1316,7 @@ class PixivApi(
         if (!isValidPathId(userId) || !isValidPathId(currentId)) return emptyList()
         val (code, body) = getJson("$baseUrl/ajax/user/$userId/profile/all")
         if (code == 404) return emptyList()
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
         val b = json.optJSONObject("body") ?: return emptyList()
@@ -1396,7 +1400,7 @@ class PixivApi(
         val (code, body) =
             getJson("$baseUrl/ajax/user/$id/profile/novels?is_first_page=0&lang=zh$query")
         if (code == 404) return emptyList()
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
         val works = json.optJSONObject("body")?.optJSONObject("works") ?: return emptyList()
@@ -1543,7 +1547,7 @@ class PixivApi(
         val query = validIds.joinToString("&") { "illust_ids%5B%5D=$it" }
         val (code, body) = getJson("$baseUrl/ajax/illust/recommend/illusts?lang=zh&$query")
         if (code == 404) return emptyList()
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return emptyList()
         val payload = json.optJSONObject("body") ?: return emptyList()
@@ -1604,9 +1608,12 @@ class PixivApi(
         val (artCode, artBody) = getJson(
             "$baseUrl/ajax/search/artworks/$enc?word=$enc&order=$ord&mode=$rMode&p=$page&s_mode=$sm&type=all&lang=en",
         )
+        if (artCode == 429) throw PixivException("HTTP 429", 429)
         val (novelCode, novelBody) = getJson(
             "$baseUrl/ajax/search/novels/$enc?word=$enc&order=$ord&mode=$rMode&p=$page&s_mode=$sm&lang=en",
         )
+        if (novelCode == 429) throw PixivException("HTTP 429", 429)
+        if (artCode != 200 && novelCode != 200) throw PixivException("HTTP $artCode", artCode)
 
         val items = ArrayList<SearchItem>()
         if (artCode == 200) items += parseArtworkSearch(artBody, limit)
@@ -1618,6 +1625,7 @@ class PixivApi(
                 ?: (if (novelCode == 200) parseTagEnglishTranslation(novelBody, word) else null)
             val officialCoverUrl = if (page == 1) {
                 val (tagCode, tagBody) = getJson("$baseUrl/ajax/search/tags/$enc")
+                if (tagCode == 429) throw PixivException("HTTP 429", 429)
                 if (tagCode == 200) parseTagOfficialCover(tagBody) else null
             } else {
                 null
@@ -1651,7 +1659,7 @@ class PixivApi(
         if (code == 400 || code == 401 || code == 403) {
             return UserSearchResult(emptyList(), requiresLogin = true)
         }
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val root = JSONObject(body)
         if (root.optBoolean("error")) return UserSearchResult(emptyList())
         val payload = root.optJSONObject("body") ?: return UserSearchResult(emptyList())
@@ -1752,7 +1760,7 @@ class PixivApi(
                 "?limit=$limit&last_order=$lastOrder&order_by=asc&lang=zh",
         )
         if (code == 404) return null
-        if (code != 200) throw PixivException("HTTP $code")
+        if (code != 200) throw PixivException("HTTP $code", code)
         val json = JSONObject(body)
         if (json.optBoolean("error")) return null
         val payload = json.optJSONObject("body") ?: return null

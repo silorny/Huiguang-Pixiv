@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +75,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.ShareFormatter
 import moe.huiguang.pixiv.data.store.SettingsStore
+import moe.huiguang.pixiv.design.AdaptiveTokens
 import moe.huiguang.pixiv.design.components.CircleIconButton
 import moe.huiguang.pixiv.design.components.isDarkBackdrop
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
@@ -233,8 +235,14 @@ fun ShareFormatScreen(
                             top = statusTop + 56.dp + 12.dp,
                             bottom = navBottom + 32.dp,
                         ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    SectionSubtitle(
+                    Column(
+                        Modifier
+                            .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                            .fillMaxWidth(),
+                    ) {
+                        SectionSubtitle(
                         text = stringResource(R.string.share_format_section_edit),
                         color = colors.summary,
                     )
@@ -309,6 +317,7 @@ fun ShareFormatScreen(
                             ),
                             modifier = Modifier.fillMaxWidth(),
                         )
+                    }
                     }
                 }
             }
@@ -407,18 +416,25 @@ private fun ShareFormatTopBar(
                 dark = dark,
                 blurRadius = 20f,
             )
-            SegmentedControl(
+            Box(
                 modifier = Modifier.weight(1f),
-                labels = listOf(
-                    stringResource(R.string.share_format_tab_work),
-                    stringResource(R.string.share_format_tab_author),
-                ),
-                selectedIndex = selectedTab,
-                onSelected = onSelectTab,
-                backdrop = backdrop,
-                dark = dark,
-                enabled = true,
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                SegmentedControl(
+                    modifier = Modifier
+                        .widthIn(max = AdaptiveTokens.SwitcherMaxWidth)
+                        .fillMaxWidth(),
+                    labels = listOf(
+                        stringResource(R.string.share_format_tab_work),
+                        stringResource(R.string.share_format_tab_author),
+                    ),
+                    selectedIndex = selectedTab,
+                    onSelected = onSelectTab,
+                    backdrop = backdrop,
+                    dark = dark,
+                    enabled = true,
+                )
+            }
             CircleIconButton(
                 icon = restartIcon,
                 contentDescription = stringResource(R.string.share_format_reset),

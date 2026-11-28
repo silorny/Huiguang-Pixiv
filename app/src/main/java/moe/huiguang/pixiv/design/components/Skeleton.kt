@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,12 +23,23 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.theme.CouiTheme
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.design.shape.CachedCouiShape
 
 private val SkeletonCardOuterShape = CachedCouiShape(18.dp, 3f)
 private val SkeletonCardInnerShape = CachedCouiShape(14.dp, 3f)
 private val SkeletonDetailCoverShape = CachedCouiShape(20.dp, 3f)
 private val SkeletonThumbShape = CachedCouiShape(12.dp, 3f)
+
+private val SkeletonColumnHeightPatterns = listOf(
+    listOf(210.dp, 168.dp, 192.dp),
+    listOf(164.dp, 224.dp, 178.dp),
+    listOf(196.dp, 156.dp, 212.dp),
+    listOf(172.dp, 206.dp, 168.dp),
+    listOf(220.dp, 174.dp, 186.dp),
+)
 
 /**
  * Lightweight grayscale waterfall skeleton using COUI `outlineVariant` per the
@@ -38,11 +50,11 @@ fun WaterfallSkeleton(
     modifier: Modifier = Modifier,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp = 24.dp,
+    columns: Int = rememberAdaptiveGridColumns(),
 ) {
     val colors = CouiPageDefaults.themeColors()
     val placeholder = CouiTheme.colorScheme.outlineVariant
-    val leftHeights = listOf(210.dp, 168.dp, 192.dp)
-    val rightHeights = listOf(164.dp, 224.dp, 178.dp)
+    val columnCount = columns.coerceAtLeast(1)
 
     Row(
         modifier = modifier
@@ -57,18 +69,14 @@ fun WaterfallSkeleton(
             ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SkeletonColumn(
-            heights = leftHeights,
-            cardColor = colors.card,
-            placeholderColor = placeholder,
-            modifier = Modifier.weight(1f),
-        )
-        SkeletonColumn(
-            heights = rightHeights,
-            cardColor = colors.card,
-            placeholderColor = placeholder,
-            modifier = Modifier.weight(1f),
-        )
+        repeat(columnCount) { index ->
+            SkeletonColumn(
+                heights = SkeletonColumnHeightPatterns[index % SkeletonColumnHeightPatterns.size],
+                cardColor = colors.card,
+                placeholderColor = placeholder,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -126,64 +134,100 @@ fun DetailSkeleton(
 ) {
     val colors = CouiPageDefaults.themeColors()
     val placeholder = CouiTheme.colorScheme.outlineVariant
+    val isExpanded = rememberIsLandscapeSplit()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = topPadding),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(300.dp)
-                .background(placeholder, SkeletonDetailCoverShape),
-        )
-        Spacer(Modifier.height(16.dp))
-        Box(
-            Modifier
-                .fillMaxWidth(0.68f)
-                .height(20.dp)
-                .background(placeholder, CircleShape),
-        )
-        Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier
-                .fillMaxWidth(0.32f)
-                .height(13.dp)
-                .background(placeholder, CircleShape),
-        )
-        Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    if (isExpanded) {
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp)
+                .padding(top = topPadding),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
             Box(
                 Modifier
-                    .size(40.dp)
-                    .background(placeholder, CircleShape),
+                    .weight(1f)
+                    .height(440.dp)
+                    .background(placeholder, SkeletonDetailCoverShape),
             )
-            Spacer(Modifier.width(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(
-                    Modifier
-                        .width(112.dp)
-                        .height(14.dp)
-                        .background(placeholder, CircleShape),
-                )
-                Box(
-                    Modifier
-                        .width(72.dp)
-                        .height(11.dp)
-                        .background(placeholder, CircleShape),
-                )
+            Column(Modifier.weight(1f)) {
+                DetailMetaSkeleton(cardColor = colors.card, placeholder = placeholder)
             }
         }
-        Spacer(Modifier.height(16.dp))
+    } else {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+                .padding(top = topPadding),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                    .fillMaxWidth(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .background(placeholder, SkeletonDetailCoverShape),
+                )
+                Spacer(Modifier.height(16.dp))
+                DetailMetaSkeleton(cardColor = colors.card, placeholder = placeholder)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailMetaSkeleton(
+    cardColor: androidx.compose.ui.graphics.Color,
+    placeholder: androidx.compose.ui.graphics.Color,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth(0.68f)
+            .height(20.dp)
+            .background(placeholder, CircleShape),
+    )
+    Spacer(Modifier.height(8.dp))
+    Box(
+        Modifier
+            .fillMaxWidth(0.32f)
+            .height(13.dp)
+            .background(placeholder, CircleShape),
+    )
+    Spacer(Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(colors.card, CouiCapsuleShape),
+                .size(40.dp)
+                .background(placeholder, CircleShape),
         )
+        Spacer(Modifier.width(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier
+                    .width(112.dp)
+                    .height(14.dp)
+                    .background(placeholder, CircleShape),
+            )
+            Box(
+                Modifier
+                    .width(72.dp)
+                    .height(11.dp)
+                    .background(placeholder, CircleShape),
+            )
+        }
     }
+    Spacer(Modifier.height(16.dp))
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(cardColor, CouiCapsuleShape),
+    )
 }
 
 /**
@@ -199,20 +243,26 @@ fun WorkRowListSkeleton(
 ) {
     val colors = CouiPageDefaults.themeColors()
     val placeholder = CouiTheme.colorScheme.outlineVariant
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .padding(top = topPadding, bottom = bottomPadding),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        repeat(count) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .background(colors.card, SkeletonCardOuterShape)
-                    .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = AdaptiveTokens.ReadableMaxWidth)
+                .fillMaxWidth(),
+        ) {
+            repeat(count) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .background(colors.card, SkeletonCardOuterShape)
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                 Box(
                     Modifier
                         .size(64.dp)
@@ -239,6 +289,7 @@ fun WorkRowListSkeleton(
                             .background(placeholder, CircleShape),
                     )
                 }
+            }
             }
         }
     }

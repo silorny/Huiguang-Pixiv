@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -80,6 +81,7 @@ fun FloatingSecondaryTopBar(
     title: String,
     backdrop: CouiBackdrop,
     onBack: () -> Unit,
+    afterTitle: (@Composable RowScope.() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = CouiPageDefaults.themeColors()
@@ -110,9 +112,14 @@ fun FloatingSecondaryTopBar(
                 text = title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                modifier = if (afterTitle == null) Modifier.weight(1f) else Modifier.widthIn(max = 160.dp),
                 style = rememberCouiTextStyle(CouiTextKind.TopBar).copy(color = colors.title),
             )
+            if (afterTitle != null) {
+                Spacer(Modifier.width(12.dp))
+                afterTitle()
+                Spacer(Modifier.weight(1f))
+            }
             trailing()
         }
     }

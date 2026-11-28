@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -115,6 +117,10 @@ import moe.huiguang.pixiv.data.repo.EngagementEvent
 import moe.huiguang.pixiv.data.repo.EngagementKind
 import moe.huiguang.pixiv.data.repo.EngagementRepository
 import moe.huiguang.pixiv.data.store.FavoriteEntry
+import moe.huiguang.pixiv.design.AdaptiveTokens
+import moe.huiguang.pixiv.design.CenteredReadableBox
+import moe.huiguang.pixiv.design.rememberAdaptiveGridColumns
+import moe.huiguang.pixiv.design.rememberIsLandscapeSplit
 import moe.huiguang.pixiv.design.components.ActionNavItem
 import moe.huiguang.pixiv.design.components.ArtworkCard
 import moe.huiguang.pixiv.design.components.CircleIconButton
@@ -124,6 +130,7 @@ import moe.huiguang.pixiv.design.components.GlowChip
 import moe.huiguang.pixiv.design.components.GlowStatCapsule
 import moe.huiguang.pixiv.design.components.GlowSurface
 import moe.huiguang.pixiv.design.components.PrimaryButton
+import moe.huiguang.pixiv.design.components.RetryErrorState
 import moe.huiguang.pixiv.design.components.RetryableImage
 import moe.huiguang.pixiv.design.components.StatValue
 import moe.huiguang.pixiv.design.components.TagChip
@@ -404,11 +411,18 @@ fun DetailScreen(
         else -> 2
     }
 
+    val errorBackdrop = rememberCouiBackdrop()
     Box(
         Modifier
             .fillMaxSize()
             .background(colors.background),
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .couiBackdrop(errorBackdrop)
+                .background(colors.background),
+        )
         Crossfade(
             targetState = detailPhase,
             animationSpec = tween(200),
@@ -417,32 +431,21 @@ fun DetailScreen(
             when (phase) {
                 0 -> DetailSkeleton(topPadding = statusTop + 52.dp + 8.dp)
 
-                1 -> Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = error ?: stringResource(R.string.error_load_failed),
-                        kind = CouiTextKind.ItemSummary,
-                        color = colors.summary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    PrimaryButton(
-                        text = stringResource(R.string.action_retry),
-                        onClick = { reloadKey++ },
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Box(Modifier.clickable { onOpenAsNovel(workId) }) {
-                        Text(
-                            text = stringResource(R.string.detail_try_novel),
-                            kind = CouiTextKind.ItemSummary,
-                            color = colors.accent,
-                        )
-                    }
-                }
+                1 -> RetryErrorState(
+                    error = error,
+                    onRetry = { reloadKey++ },
+                    backdrop = errorBackdrop,
+                    extraAction = {
+                        Spacer(Modifier.height(12.dp))
+                        Box(Modifier.clickable { onOpenAsNovel(workId) }) {
+                            Text(
+                                text = stringResource(R.string.detail_try_novel),
+                                kind = CouiTextKind.ItemSummary,
+                                color = colors.accent,
+                            )
+                        }
+                    },
+                )
 
                 else -> {
                     val workDetail = current ?: return@Crossfade
@@ -455,6 +458,10 @@ fun DetailScreen(
                     val overscroll = rememberCouiOverscrollEffect()
                     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     var currentCoverPage by rememberSaveable(workId) { mutableIntStateOf(0) }
+                    val isExpanded = rememberIsLandscapeSplit()
+                    val singlePaneColumns = rememberAdaptiveGridColumns()
+                    val rightPaneColumns = if (isExpanded) 2 else singlePaneColumns
+                    val favoriteColor = if (effectDark) CouiColor.Night.RED else CouiColor.Day.RED
 
                     val nearRelatedEnd by remember(gridState, relatedWorks, relatedNextIds) {
                         derivedStateOf {
@@ -484,146 +491,145 @@ fun DetailScreen(
                             .couiBackdrop(effectBackdrop)
                             .background(colors.background),
                     )
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .couiBackdrop(backdrop)
-                            .background(colors.background),
-                    ) {
+                    val renderFeedGrid: @Composable (Boolean) -> Unit = { includeCoverInGrid ->
                         LazyVerticalStaggeredGrid(
-                            columns = StaggeredGridCells.Fixed(2),
+                            columns = StaggeredGridCells.Fixed(rightPaneColumns),
                             state = gridState,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .overscroll(overscroll),
                             contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
+                                start = if (isExpanded) 0.dp else 16.dp,
+                                end = if (isExpanded) 0.dp else 16.dp,
+                                top = if (includeCoverInGrid) 0.dp else statusTop + 52.dp + 8.dp,
                                 bottom = 104.dp + navBottom,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalItemSpacing = 12.dp,
                         ) {
                             item(span = StaggeredGridItemSpan.FullLine, key = "detail-header-body") {
-                                Column(Modifier.fillMaxWidth()) {
-                                    // Leave the status bar and the 52dp top bar clear, so the
-                                    // cover starts below the two floating buttons.
-                                    Spacer(Modifier.height(statusTop + 52.dp + 8.dp))
-                                    CoverPager(
-                                        detail = workDetail,
-                                        pages = pages,
-                                        colors = colors,
-                                        backdrop = effectBackdrop,
-                                        onPageChanged = { currentCoverPage = it },
-                                        onOpenViewer = onOpenViewer,
-                                        horizontalPadding = 0.dp,
-                                    )
-
-                                    Spacer(Modifier.height(14.dp))
-                                    Column(Modifier.padding(horizontal = 4.dp)) {
-                                        // 1. work type + PID + publish date
-                                        WorkMetaHeader(
-                                            typeLabel = typeLabel(current.illustType),
-                                            id = current.id,
-                                            createDate = current.createDate,
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-
-                                        // 2. title
-                                        BasicText(
-                                            text = current.title.ifBlank { stringResource(R.string.untitled_work) },
-                                            style = TextStyle(
-                                                color = colors.title,
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                lineHeight = 28.sp,
-                                            ),
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-
-                                        // 3. author
-                                        AuthorRow(
-                                            detail = current,
-                                            avatar = avatar,
-                                            colors = colors,
-                                            isFollowed = followedAuthors[current.userId] == true,
-                                            backdrop = effectBackdrop,
-                                            dark = effectDark,
-                                            onToggleFollow = { toggleFollow() },
-                                            onClick = { onOpenAuthor(current.userId) },
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-
-                                        // 4. stats capsule (read-only segmented look)
-                                        GlowStatCapsule(
-                                            stats = listOf(
-                                                StatValue(number(current.viewCount), stringResource(R.string.detail_views)),
-                                                StatValue(number(current.bookmarkCount), stringResource(R.string.detail_bookmarks)),
-                                                StatValue(number(current.likeCount), stringResource(R.string.detail_likes)),
-                                            ),
-                                            backdrop = effectBackdrop,
-                                            dark = effectDark,
-                                        )
-                                        // 5. caption with clickable internal & external links
-                                        val description = plainCaption(current.description)
-                                        if (description.isNotEmpty()) {
-                                            Spacer(Modifier.height(12.dp))
-                                            IntroCard(
-                                                text = description,
+                                CenteredReadableBox(maxWidth = if (isExpanded) Dp.Unspecified else 640.dp) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        if (includeCoverInGrid) {
+                                            // Leave the status bar and the 52dp top bar clear, so the
+                                            // cover starts below the two floating buttons.
+                                            Spacer(Modifier.height(statusTop + 52.dp + 8.dp))
+                                            CoverPager(
+                                                detail = workDetail,
+                                                pages = pages,
                                                 colors = colors,
-                                                rawHtml = current.description,
-                                                onInternalLink = ::handleCaptionLink,
-                                                onExternalLink = { url ->
-                                                    pendingExternalUrl = url
-                                                    externalLinkDialogVisible = true
-                                                },
+                                                backdrop = effectBackdrop,
+                                                onPageChanged = { currentCoverPage = it },
+                                                onOpenViewer = onOpenViewer,
+                                                horizontalPadding = 0.dp,
+                                            )
+                                            Spacer(Modifier.height(14.dp))
+                                        }
+                                        Column(Modifier.padding(horizontal = 4.dp)) {
+                                            // 1. work type + PID + publish date
+                                            WorkMetaHeader(
+                                                typeLabel = typeLabel(current.illustType),
+                                                id = current.id,
+                                                createDate = current.createDate,
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+
+                                            // 2. title
+                                            BasicText(
+                                                text = current.title.ifBlank { stringResource(R.string.untitled_work) },
+                                                style = TextStyle(
+                                                    color = colors.title,
+                                                    fontSize = 20.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    lineHeight = 28.sp,
+                                                ),
+                                            )
+                                            Spacer(Modifier.height(12.dp))
+
+                                            // 3. author
+                                            AuthorRow(
+                                                detail = current,
+                                                avatar = avatar,
+                                                colors = colors,
+                                                isFollowed = followedAuthors[current.userId] == true,
+                                                backdrop = effectBackdrop,
+                                                dark = effectDark,
+                                                onToggleFollow = { toggleFollow() },
+                                                onClick = { onOpenAuthor(current.userId) },
+                                            )
+                                            Spacer(Modifier.height(12.dp))
+
+                                            // 4. stats capsule (read-only segmented look)
+                                            GlowStatCapsule(
+                                                stats = listOf(
+                                                    StatValue(number(current.viewCount), stringResource(R.string.detail_views)),
+                                                    StatValue(number(current.bookmarkCount), stringResource(R.string.detail_bookmarks)),
+                                                    StatValue(number(current.likeCount), stringResource(R.string.detail_likes)),
+                                                ),
+                                                backdrop = effectBackdrop,
+                                                dark = effectDark,
+                                            )
+                                            // 5. caption with clickable internal & external links
+                                            val description = plainCaption(current.description)
+                                            if (description.isNotEmpty()) {
+                                                Spacer(Modifier.height(12.dp))
+                                                IntroCard(
+                                                    text = description,
+                                                    colors = colors,
+                                                    rawHtml = current.description,
+                                                    onInternalLink = ::handleCaptionLink,
+                                                    onExternalLink = { url ->
+                                                        pendingExternalUrl = url
+                                                        externalLinkDialogVisible = true
+                                                    },
+                                                )
+                                            }
+                                        }
+
+                                        current.series?.let { series ->
+                                            Spacer(Modifier.height(16.dp))
+                                            SeriesSection(
+                                                series = series,
+                                                currentId = current.id,
+                                                isNovel = false,
+                                                api = api,
+                                                onOpenWork = { id -> onOpenLinked("illust", id) },
+                                                onOpenSeries = { onOpenSeries(series.seriesId, current.id) },
+                                                insetInGrid = true,
                                             )
                                         }
-                                    }
 
-                                    current.series?.let { series ->
-                                        Spacer(Modifier.height(16.dp))
-                                        SeriesSection(
-                                            series = series,
+                                        LinkedWorksSection(
+                                            descriptionHtml = current.description,
+                                            currentKind = "illust",
                                             currentId = current.id,
-                                            isNovel = false,
+                                            series = current.series,
                                             api = api,
-                                            onOpenWork = { id -> onOpenLinked("illust", id) },
-                                            onOpenSeries = { onOpenSeries(series.seriesId, current.id) },
-                                            insetInGrid = true,
+                                            onOpen = { work -> onOpenLinked(work.kind, work.id) },
+                                            onOpenAuthor = onOpenAuthor,
+                                            titleHorizontalPadding = 8.dp,
+                                            cardHorizontalPadding = 0.dp,
                                         )
-                                    }
 
-                                    LinkedWorksSection(
-                                        descriptionHtml = current.description,
-                                        currentKind = "illust",
-                                        currentId = current.id,
-                                        series = current.series,
-                                        api = api,
-                                        onOpen = { work -> onOpenLinked(work.kind, work.id) },
-                                        onOpenAuthor = onOpenAuthor,
-                                        titleHorizontalPadding = 8.dp,
-                                        cardHorizontalPadding = 0.dp,
-                                    )
-
-                                    // 6. tags, wrapped
-                                    if (current.tags.isNotEmpty()) {
-                                        Spacer(Modifier.height(18.dp))
-                                        Text(
-                                            text = stringResource(R.string.detail_tags),
-                                            kind = CouiTextKind.GroupTitle,
-                                            color = colors.summary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        )
-                                        FlowRow(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 4.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            current.tags.forEach { tag ->
-                                                TagChip(text = tag, onClick = { onSearchTag(tag) })
+                                        // 6. tags, wrapped
+                                        if (current.tags.isNotEmpty()) {
+                                            Spacer(Modifier.height(18.dp))
+                                            Text(
+                                                text = stringResource(R.string.detail_tags),
+                                                kind = CouiTextKind.GroupTitle,
+                                                color = colors.summary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                            )
+                                            FlowRow(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                current.tags.forEach { tag ->
+                                                    TagChip(text = tag, onClick = { onSearchTag(tag) })
+                                                }
                                             }
                                         }
                                     }
@@ -633,32 +639,34 @@ fun DetailScreen(
                             // 7. author's neighboring works (3-card horizontal carousel centered on current)
                             if (authorWorks.size > 1) {
                                 item(span = StaggeredGridItemSpan.FullLine, key = "author-other-works") {
-                                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                                        Text(
-                                            text = stringResource(R.string.detail_author_other_works),
-                                            kind = CouiTextKind.GroupTitle,
-                                            color = colors.summary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        )
-                                        AuthorOtherWorksRow(
-                                            items = authorWorks,
-                                            currentId = current.id,
-                                            revealR18 = settingsState.revealR18,
-                                            colors = colors,
-                                            onOpenWork = { item ->
-                                                if (item.id != current.id) {
-                                                    onOpenLinked(
-                                                        if (item.category == SearchCategory.NOVEL) "novel" else "illust",
-                                                        item.id,
-                                                    )
-                                                }
-                                            },
-                                        )
+                                    CenteredReadableBox(maxWidth = if (isExpanded) Dp.Unspecified else 640.dp) {
+                                        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                            Text(
+                                                text = stringResource(R.string.detail_author_other_works),
+                                                kind = CouiTextKind.GroupTitle,
+                                                color = colors.summary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                            )
+                                            AuthorOtherWorksRow(
+                                                items = authorWorks,
+                                                currentId = current.id,
+                                                revealR18 = settingsState.revealR18,
+                                                colors = colors,
+                                                onOpenWork = { item ->
+                                                    if (item.id != current.id) {
+                                                        onOpenLinked(
+                                                            if (item.category == SearchCategory.NOVEL) "novel" else "illust",
+                                                            item.id,
+                                                        )
+                                                    }
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            // 8. related works 2-column waterfall
+                            // 8. related works waterfall
                             if (relatedWorks.isNotEmpty() || relatedLoading) {
                                 item(span = StaggeredGridItemSpan.FullLine, key = "related-works-header") {
                                     Box(
@@ -726,7 +734,51 @@ fun DetailScreen(
                                 }
                             }
                         }
-                }
+                    }
+
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .couiBackdrop(backdrop)
+                            .background(colors.background),
+                    ) {
+                        if (isExpanded) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 24.dp),
+                                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .padding(top = statusTop + 52.dp + 8.dp, bottom = 24.dp + navBottom),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CoverPager(
+                                        detail = workDetail,
+                                        pages = pages,
+                                        colors = colors,
+                                        backdrop = effectBackdrop,
+                                        onPageChanged = { currentCoverPage = it },
+                                        onOpenViewer = onOpenViewer,
+                                        horizontalPadding = 0.dp,
+                                        fillPane = true,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                ) {
+                                    renderFeedGrid(false)
+                                }
+                            }
+                        } else {
+                            renderFeedGrid(true)
+                        }
+                    }
 
                 val workUrl = PixivApi.PAGE_URL + current.id
                 val shareText = ShareFormatter.formatWork(
@@ -765,39 +817,71 @@ fun DetailScreen(
                     },
                 )
 
-                val favoriteColor = if (effectDark) CouiColor.Night.RED else CouiColor.Day.RED
-                FloatingActionNavBar(
-                    backdrop = backdrop,
-                    dark = effectDark,
-                    primaryOnLeft = settingsState.leftHanded,
-                    items = listOf(
-                        ActionNavItem(
-                            label = stringResource(R.string.detail_action_download),
-                            iconRes = R.drawable.ic_download,
-                            onClick = { downloadAll() },
-                        ),
-                        ActionNavItem(
-                            label = stringResource(
-                                if (isFavorite) R.string.detail_favorited_short else R.string.detail_favorite,
+                val actionNavBar: @Composable BoxScope.() -> Unit = {
+                    FloatingActionNavBar(
+                        backdrop = backdrop,
+                        dark = effectDark,
+                        primaryOnLeft = settingsState.leftHanded,
+                        items = listOf(
+                            ActionNavItem(
+                                label = stringResource(R.string.detail_action_download),
+                                iconRes = R.drawable.ic_download,
+                                onClick = { downloadAll() },
                             ),
-                            iconRes = if (isFavorite) R.drawable.ic_heart_filled else R.drawable.ic_heart_outlined,
-                            iconTint = if (isFavorite) favoriteColor else null,
-                            haptic = HapticFeedbackType.LongPress,
-                            onClick = { toggleFavorite() },
+                            ActionNavItem(
+                                label = stringResource(
+                                    if (isFavorite) R.string.detail_favorited_short else R.string.detail_favorite,
+                                ),
+                                iconRes = if (isFavorite) R.drawable.ic_heart_filled else R.drawable.ic_heart_outlined,
+                                iconTint = if (isFavorite) favoriteColor else null,
+                                haptic = HapticFeedbackType.LongPress,
+                                onClick = { toggleFavorite() },
+                            ),
+                            ActionNavItem(
+                                label = stringResource(R.string.detail_action_browser),
+                                iconRes = R.drawable.ic_open_browser,
+                                onClick = {
+                                    openExternalUrl(context, PixivApi.PAGE_URL + current.id)
+                                },
+                            ),
                         ),
-                        ActionNavItem(
-                            label = stringResource(R.string.detail_action_browser),
-                            iconRes = R.drawable.ic_open_browser,
-                            onClick = {
-                                openExternalUrl(context, PixivApi.PAGE_URL + current.id)
-                            },
-                        ),
-                    ),
-                    primaryIconRes = R.drawable.ic_view_large,
-                    primaryDescription = stringResource(R.string.detail_action_view_image),
-                    onPrimaryClick = { onOpenViewer(currentCoverPage) },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                        primaryIconRes = R.drawable.ic_view_large,
+                        primaryDescription = stringResource(R.string.detail_action_view_image),
+                        onPrimaryClick = { onOpenViewer(currentCoverPage) },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+
+                if (isExpanded) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        if (settingsState.leftHanded) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                            ) {
+                                actionNavBar()
+                            }
+                            Spacer(Modifier.weight(1f))
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                            ) {
+                                actionNavBar()
+                            }
+                        }
+                    }
+                } else {
+                    actionNavBar()
+                }
                 }
             }
         }
@@ -943,6 +1027,7 @@ private fun CoverPager(
     onPageChanged: (Int) -> Unit,
     onOpenViewer: (Int) -> Unit,
     horizontalPadding: Dp = 16.dp,
+    fillPane: Boolean = false,
 ) {
     val pagerState = rememberPagerState(pageCount = { pages.size.coerceAtLeast(1) })
     LaunchedEffect(pagerState.currentPage) {
@@ -958,10 +1043,15 @@ private fun CoverPager(
 
     BoxWithConstraints(
         Modifier
-            .fillMaxWidth()
+            .then(if (fillPane) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .padding(horizontal = horizontalPadding),
+        contentAlignment = Alignment.Center,
     ) {
-        val coverHeight = (maxWidth / ratio).coerceIn(180.dp, 520.dp)
+        val coverHeight = if (fillPane) {
+            maxHeight
+        } else {
+            (maxWidth / ratio).coerceIn(180.dp, 520.dp)
+        }
         Box(
             Modifier
                 .fillMaxWidth()

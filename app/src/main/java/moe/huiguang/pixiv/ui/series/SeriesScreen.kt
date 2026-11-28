@@ -35,6 +35,7 @@ import moe.huiguang.pixiv.R
 import moe.huiguang.pixiv.data.model.HistoryEntry
 import moe.huiguang.pixiv.data.model.SeriesLink
 import moe.huiguang.pixiv.data.net.PixivApi
+import moe.huiguang.pixiv.design.CenteredReadableBox
 import moe.huiguang.pixiv.design.components.SecondaryButton
 import moe.huiguang.pixiv.design.components.WorkRow
 import moe.huiguang.pixiv.ui.common.FloatingSecondaryTopBar
@@ -138,24 +139,28 @@ fun SeriesScreen(
                     ),
                 ) {
                     item(key = "count") {
-                        Text(
-                            text = stringResource(R.string.series_count, episodes.size),
-                            kind = CouiTextKind.GroupTitle,
-                            color = colors.summary,
-                            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
-                        )
+                        CenteredReadableBox {
+                            Text(
+                                text = stringResource(R.string.series_count, episodes.size),
+                                kind = CouiTextKind.GroupTitle,
+                                color = colors.summary,
+                                modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
+                            )
+                        }
                     }
 
                     items(episodes, key = { it.id }) { link ->
-                        WorkRow(
-                            thumbUrl = link.thumbUrl,
-                            title = link.title.ifBlank { link.id },
-                            author = link.userName,
-                            meta = stringResource(R.string.detail_series_order, link.order) +
-                                " · " + workMeta(rowKind, link.illustType, link.id),
-                            highlighted = link.id == startId,
-                            onClick = { onOpen(link) },
-                        )
+                        CenteredReadableBox {
+                            WorkRow(
+                                thumbUrl = link.thumbUrl,
+                                title = link.title.ifBlank { link.id },
+                                author = link.userName,
+                                meta = stringResource(R.string.detail_series_order, link.order) +
+                                    " · " + workMeta(rowKind, link.illustType, link.id),
+                                highlighted = link.id == startId,
+                                onClick = { onOpen(link) },
+                            )
+                        }
                     }
 
                     if (episodes.size >= 20) {
